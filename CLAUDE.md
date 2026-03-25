@@ -32,26 +32,44 @@
 ```
 wing-optimizer/
 ├── backend/                  # Python Flask API
-│   ├── main.py               # Flask app entry point — 14 REST endpoints
+│   ├── main.py               # Flask app — 22 REST endpoints (14 original + 8 new)
 │   ├── config.py             # All constants: flow conditions, param bounds, paths
 │   ├── analysis/
 │   │   ├── aero_solver.py    # Core aerodynamic physics (Glauert + Thwaites BL)
 │   │   ├── aero_metrics.py   # evaluate_design(), compare_to_baseline()
-│   │   └── batch_evaluator.py# LHS dataset generation — runs physics on N_SAMPLES designs
+│   │   └── batch_evaluator.py# LHS dataset generation
+│   ├── fidelity/             # Multi-fidelity evaluation stack
+│   │   ├── base.py           # FidelityLevel enum, FidelityResult dataclass, abstract base
+│   │   ├── level0.py         # L0 conceptual screening (wraps aero_metrics, ±18-28% uncertainty)
+│   │   ├── level1_cfd.py     # L1 2D section RANS via SU2 (stub if SU2 not installed)
+│   │   └── level2_cfd.py     # L2 3D full-wing RANS via OpenFOAM (stub + HPC hooks)
 │   ├── geometry/
-│   │   └── naca_generator.py # NACA 4-series profile + flap geometry generator
-│   ├── data/
-│   │   ├── sampler.py        # Latin Hypercube Sampling implementation
-│   │   ├── pipeline.py       # train/val/test split + feature engineering
-│   │   ├── db.sqlite         # SQLite database for results
-│   │   └── processed/        # CSV/Parquet splits (train.csv, test.csv, val.csv, full_clean.csv)
+│   │   ├── naca_generator.py # NACA 4-series profile + flap geometry
+│   │   ├── wing_definition.py# WingDefinition multi-element parametrization (mainplane+flap+gurney+endplate)
+│   │   └── geometry_validator.py # ValidationReport with error/warning classification
+│   ├── conditions/
+│   │   ├── condition_set.py  # OperatingPoint, ConditionSet, 5 named sets (race/sweep/envelope)
+│   │   └── evaluator.py      # MultiConditionEvaluator — weighted aggregation + sensitivity flags
+│   ├── constraints/
+│   │   └── engine.py         # ConstraintEngine — geometric/aero/packaging/robustness checks
 │   ├── models/
-│   │   ├── train.py          # Trains XGBoost, GP, MLP — saves to models/saved/
+│   │   ├── train.py          # Trains XGBoost, GP, MLP
 │   │   ├── predict.py        # predict_all(), get_model_metrics(), get_shap_importance()
-│   │   └── saved/            # Serialized models: xgboost.joblib, gp.joblib, mlp.joblib
+│   │   ├── surrogate.py      # EnsembleSurrogate with GP uncertainty, UCB acquisition score
+│   │   └── saved/            # xgboost.joblib, gp.joblib, mlp.joblib
+│   ├── cfd/
+│   │   ├── case_builder.py   # CaseBuilder dispatcher (L1/L2)
+│   │   ├── runner.py         # CFDRunner — local/async/HPC execution hooks
+│   │   ├── parser.py         # ResultParser — SU2 history.csv + OpenFOAM postProcessing
+│   │   └── artifact_store.py # ArtifactStore — indexed run metadata + result storage
 │   ├── optimization/
-│   │   └── nsga2_runner.py   # NSGA-II from scratch: SBX crossover, poly mutation, crowding
-│   ├── results/              # JSON results: model_metrics.json, optimize_results.json, etc.
+│   │   ├── nsga2_runner.py   # NSGA-II from scratch
+│   │   └── hybrid_pipeline.py# 7-stage hybrid: LHS→L0→surrogate NSGA-II→constraints→L1→L2→rank
+│   ├── data/
+│   │   ├── sampler.py        # Latin Hypercube Sampling
+│   │   ├── pipeline.py       # train/val/test split + feature engineering
+│   │   └── processed/        # CSV splits
+│   ├── results/              # JSON results + artifact store
 │   ├── requirements.txt      # flask, numpy, scipy, pandas, scikit-learn, joblib, gunicorn
 │   └── Procfile              # gunicorn main:app (production)
 │
@@ -114,22 +132,35 @@ cd frontend && npm run dev
 
 ## API Endpoints (backend/main.py)
 
+### Original endpoints
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Returns `{status, models_loaded}` |
 | GET | `/design/baseline` | Baseline NACA 4412 inverted metrics |
-| POST | `/design/evaluate` | Run physics solver on wing params |
+| POST | `/design/evaluate` | Run L0 physics solver on wing params |
 | POST | `/design/geometry` | Generate SVG geometry coordinates |
-| POST | `/design/sweep` | AoA polar sweep (array of physics results) |
-| POST | `/predict` | ML ensemble prediction for wing params |
-| GET | `/models/metrics` | R², RMSE per model per target + SHAP |
-| POST | `/optimize` | Run NSGA-II with `{pop_size, n_gen}` |
-| GET | `/optimize/results` | Load saved Pareto front results |
-| POST | `/validate` | Physics-validate top N Pareto designs |
+| POST | `/design/sweep` | AoA polar sweep |
+| POST | `/predict` | ML ensemble prediction |
+| GET | `/models/metrics` | R², RMSE per model + SHAP |
+| POST | `/optimize` | Run NSGA-II (surrogate-only) |
+| GET | `/optimize/results` | Load saved Pareto front |
+| POST | `/validate` | L0-validate top N Pareto designs |
 | GET | `/validate/results` | Load saved validation results |
 | GET | `/sensitivity` | Single-param OAT sweep |
 | GET | `/sensitivity/all` | All-params OAT sweep |
 | GET | `/dataset/stats` | Training dataset statistics |
+
+### New multi-fidelity endpoints (v4)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/fidelity/evaluate` | body: `{params, level, condition}` — run L0/L1/L2 evaluator |
+| POST | `/fidelity/multi-condition` | body: `{params, condition_set}` — evaluate over named condition set |
+| POST | `/fidelity/validate-geometry` | body: WingParams — run geometry validator, return report |
+| POST | `/predict/uncertain` | body: WingParams — surrogate + GP uncertainty + trust label |
+| POST | `/optimize/hybrid` | body: `{n_init, n_pareto, enable_l2}` — 7-stage hybrid pipeline |
+| POST | `/constraints/check` | body: `{params, metrics}` — run constraint engine |
+| GET | `/cfd/status/<run_id>` | Get CFD run record from artifact store |
+| GET | `/cfd/artifacts` | List recent CFD run records |
 
 ---
 
@@ -161,6 +192,16 @@ Targets: `Cl`, `Cd`, `Cl_Cd`, `downforce_N`, `drag_N`, `efficiency`
 
 ---
 
+## Multi-fidelity Stack
+
+| Level | Name | Solver | Uncertainty | Notes |
+|-------|------|--------|-------------|-------|
+| L0 | Conceptual Screening | Panel method + Thwaites BL | ±18–28% | Always available, ~50ms |
+| L1 | 2D Section CFD | SU2 RANS (SA turbulence) | ±4–8% | Requires SU2 install; stub mode otherwise |
+| L2 | 3D Full-wing RANS | OpenFOAM simpleFoam | ±2–5% | Requires HPC; stub mode for local dev |
+
+Trust labels: `high` (dist < 1.2σ), `moderate` (< 2σ), `low` (< 3σ), `extrapolation` (> 3σ)
+
 ## Frontend Component Library (src/components/ui.jsx)
 
 | Component | Props | Purpose |
@@ -181,6 +222,11 @@ Targets: `Cl`, `Cd`, `Cl_Cd`, `downforce_N`, `drag_N`, `efficiency`
 | `LoadingPage` | `label` | Full-page spinner |
 | `EmptyState` | `icon, title, body, action` | Empty/zero-state card |
 | `ProgressBar` | `value, max, color, showLabel` | Horizontal progress bar |
+| `FidelityBadge` | `level, label, trust, converged` | Shows L0/L1/L2 fidelity level + converged status |
+| `TrustLabel` | `trust` | Pill badge: high/moderate/low/extrapolation/stub |
+| `ConfidenceBar` | `confidence, label, stdPct` | GP confidence bar with ± std display |
+| `ConstraintPanel` | `summary` | Collapsible constraint check results (pass/warn/fail) |
+| `ConditionSelector` | `value, onChange` | Named condition set picker (race/sweep/envelope) |
 
 ---
 
@@ -245,6 +291,21 @@ Targets: `Cl`, `Cd`, `Cl_Cd`, `downforce_N`, `drag_N`, `efficiency`
 ---
 
 ## Changelog
+
+### 2026-03-25 (v4 — Multi-fidelity engineering upgrade)
+- **Multi-fidelity stack**: L0 (conceptual panel/BL), L1 (2D RANS SU2), L2 (3D RANS OpenFOAM) evaluators with `FidelityResult` dataclass, stub-mode auto-detection, provenance tracking + trust labels
+- **Multi-element geometry**: `WingDefinition` with mainplane, flap, gurney flap, endplates; `GeometryValidator` with error/warning classification
+- **Multi-condition evaluation**: `ConditionSet` with 5 named sets (race/AoA/ride-height/yaw/full-envelope), `MultiConditionEvaluator` with weighted aggregation + sensitivity flags
+- **Constraint engine**: geometric/aero/packaging/robustness checks with `ConstraintResult` severity levels
+- **Uncertainty-aware surrogate**: `EnsembleSurrogate` with GP posterior std, Mahalanobis extrapolation detection, UCB acquisition score for active learning
+- **CFD automation**: `CFDRunner` (local/async/HPC), `ResultParser` (SU2 + OpenFOAM), `ArtifactStore` with indexed run metadata
+- **Hybrid pipeline**: 7-stage optimization: LHS → L0 screening → surrogate NSGA-II → constraint filtering → L1 CFD → optional L2 → final ranking
+- **8 new API endpoints**: `/fidelity/evaluate`, `/fidelity/multi-condition`, `/fidelity/validate-geometry`, `/predict/uncertain`, `/optimize/hybrid`, `/constraints/check`, `/cfd/status/<id>`, `/cfd/artifacts`
+- **Engineering cockpit UI**: `FidelityBadge`, `TrustLabel`, `ConfidenceBar`, `ConstraintPanel`, `ConditionSelector` components
+- **Design page**: L0 badge + constraint panel + uncertainty prediction panel with GP std display
+- **Optimize page**: mode switcher (NSGA-II vs Hybrid Pipeline), hybrid config + per-candidate fidelity results
+- **Validate page**: honest L0 labeling with pointer to hybrid pipeline for higher-fidelity validation
+- All result labels updated for technical honesty (no "ground truth" claim for L0 results)
 
 ### 2026-03-25 (v3 — Aerospace Grade redesign)
 - Complete high-end UI/UX redesign — "Aerospace Grade Precision" aesthetic:
