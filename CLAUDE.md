@@ -1,7 +1,7 @@
 # CLAUDE.md — WingOpt Project
 
 > Auto-maintained by Claude. Updated whenever project changes are made.
-> Last updated: 2026-03-25 (v3 redesign)
+> Last updated: 2026-03-25
 
 ---
 
@@ -10,6 +10,20 @@
 **WingOpt** is a full-stack AI-assisted aerodynamic design tool for Formula-style front wings. It implements a complete ML-physics pipeline from scratch: physics simulation → Latin Hypercube dataset → ML surrogate training → NSGA-II multi-objective optimization → physics validation → Flask REST API → React interactive dashboard.
 
 **Repository root:** `C:\Users\ual-laptop\wing-optimizer\wing-optimizer\`
+
+## Deployment
+
+| Service | URL |
+|---------|-----|
+| **Frontend (Vercel)** | https://frontend-five-beige-e9u7r18z93.vercel.app |
+| **Backend (Railway)** | https://wing-optimizer-production.up.railway.app |
+| **GitHub** | https://github.com/nezaesm/wing-optimizer |
+
+- Frontend deployed from `frontend/` — Vite build, SPA rewrites via `frontend/vercel.json`
+- Backend deployed from `backend/` on Railway — gunicorn binds to `$PORT` (Railway sets `PORT=8080`)
+- `VITE_API_URL` set in Vercel env vars → points to Railway backend
+- To redeploy frontend: `npx vercel deploy --prod` from `frontend/`
+- To update backend: push to `master` branch — Railway auto-deploys from GitHub
 
 ---
 
@@ -223,6 +237,7 @@ Targets: `Cl`, `Cd`, `Cl_Cd`, `downforce_N`, `drag_N`, `efficiency`
 ## Known Issues / Notes
 
 - `postcss.config.js` triggers a Node.js `MODULE_TYPELESS_PACKAGE_JSON` warning — add `"type": "module"` to `package.json` to silence it (cosmetic only)
+- Railway backend listens on port **8080** (auto-assigned via `$PORT`). Domain networking in Railway must be set to port 8080, not 8000
 - Vite port auto-increments if 5173/5174 are in use — check terminal output for actual port
 - GP model inference is ~5ms vs <1ms for XGBoost/MLP — acceptable but noticeable on slow hardware
 - `hover:card-glow-blue` Tailwind variant on custom component classes doesn't apply (Tailwind limitation) — hover effects work via `.metric-card:hover` in CSS instead
