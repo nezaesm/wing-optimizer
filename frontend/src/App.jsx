@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { Activity, Sliders, FlaskConical, Target, BarChart3, ShieldCheck, Info, WifiOff } from 'lucide-react'
 import { api } from './api/client'
+import IntroPage from './pages/Intro'
 
 import DesignPage      from './pages/Design'
 import TrainPage       from './pages/Train'
@@ -56,12 +57,24 @@ function WingLogo() {
 
 export default function App() {
   const [apiStatus, setApiStatus] = useState('checking')
+  const [introDone, setIntroDone] = useState(
+    () => sessionStorage.getItem('wopt_intro') === '1'
+  )
 
   useEffect(() => {
     api.health()
       .then(d => setApiStatus(d.models_loaded ? 'ready' : 'partial'))
       .catch(() => setApiStatus('offline'))
   }, [])
+
+  if (!introDone) {
+    return (
+      <IntroPage onEnter={() => {
+        sessionStorage.setItem('wopt_intro', '1')
+        setIntroDone(true)
+      }} />
+    )
+  }
 
   return (
     <div className="scanline-overlay min-h-screen flex flex-col">
