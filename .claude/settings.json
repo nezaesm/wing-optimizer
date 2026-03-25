@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"\nimport sys, json, datetime\ntry:\n    data = json.load(sys.stdin)\n    fp = data.get('tool_input', {}).get('file_path', '')\n    if 'wing-optimizer' in fp and 'CLAUDE.md' not in fp:\n        date = datetime.date.today().isoformat()\n        out = {'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': f'[CLAUDE.md REMINDER] You just modified a wing-optimizer project file ({fp}). Before finishing this turn, update CLAUDE.md at C:/Users/ual-laptop/wing-optimizer/wing-optimizer/CLAUDE.md: (1) update the Last updated date to {date}, (2) add a changelog entry for {date} describing what changed, (3) update any affected sections such as the component list, API endpoints, CSS classes, or design decisions.'}}\n        print(json.dumps(out))\nexcept Exception:\n    pass\n\" 2>/dev/null || true",
+            "statusMessage": "Checking if CLAUDE.md needs updating…"
+          }
+        ]
+      }
+    ]
+  }
+}
