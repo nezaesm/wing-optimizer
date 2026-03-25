@@ -3,15 +3,18 @@ import React, { useState, useEffect } from 'react'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, LineChart, Line } from 'recharts'
 import { Play } from 'lucide-react'
 import { api } from '../api/client'
-import { Spinner, SectionTitle, MetricCard, ErrorBox, InfoTooltip, BeginnerTip, LoadingPage } from '../components/ui'
+import { Spinner, SectionTitle, MetricCard, ErrorBox, InfoTooltip, BeginnerTip, LoadingPage, FidelityBadge, ConstraintPanel } from '../components/ui'
 
 export default function OptimizePage() {
   const [results, setResults]           = useState(null)
+  const [hybridResults, setHybridRes]   = useState(null)
   const [loading, setLoading]           = useState(false)
   const [loadingResults, setLoadingR]   = useState(true)
   const [error, setError]               = useState('')
   const [selected, setSelected]         = useState(null)
+  const [mode, setMode]                 = useState('nsga2')  // 'nsga2' | 'hybrid'
   const [config, setConfig]             = useState({ pop_size: 60, n_gen: 50 })
+  const [hybridConfig, setHybridConfig] = useState({ n_init: 80, n_pareto: 15, enable_l2: false })
 
   useEffect(() => {
     api.optimizeResults()
@@ -22,9 +25,14 @@ export default function OptimizePage() {
   const runOptimize = async () => {
     setLoading(true); setError('')
     try {
-      await api.optimize(config)
-      const full = await api.optimizeResults()
-      setResults(full)
+      if (mode === 'hybrid') {
+        const res = await api.optimizeHybrid(hybridConfig)
+        setHybridRes(res)
+      } else {
+        await api.optimize(config)
+        const full = await api.optimizeResults()
+        setResults(full)
+      }
     } catch (e) { setError(e.message) }
     setLoading(false)
   }
@@ -99,48 +107,109 @@ export default function OptimizePage() {
         <strong>What is a Pareto front?</strong> You can't maximize downforce AND minimize drag simultaneously — improving one usually worsens the other. The Pareto front is the set of designs where you can't do better on one objective without getting worse on the other. Every dot on the scatter chart is a Pareto-optimal design: the "best possible" trade-offs.
       </BeginnerTip>
 
+      {/* Mode selector */}
+      <div className="flex gap-2 mt-4 mb-3">
+        {[
+          { id: 'nsga2',  label: 'NSGA-II (Surrogate)',  sub: 'Fast · ML-only' },
+          { id: 'hybrid', label: 'Hybrid Pipeline',       sub: '7-stage · L0→L1 CFD' },
+        ].map(m => (
+          <button key={m.id} onClick={() => setMode(m.id)} style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+            padding: '8px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+            background: mode === m.id ? 'rgba(0,200,255,0.10)' : 'rgba(255,255,255,0.04)',
+            borderLeft: `2px solid ${mode === m.id ? 'var(--arc)' : 'transparent'}`,
+            transition: 'all 0.15s',
+          }}>
+            <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', fontWeight: 600, color: mode === m.id ? 'var(--arc)' : '#dde2ed' }}>{m.label}</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>{m.sub}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Config + run */}
-      <div className="card p-5 mt-4 mb-4">
+      <div className="card p-5 mb-4">
         <div className="flex items-center gap-1 mb-4">
-          <span className="font-display font-semibold text-white text-sm">Optimization Settings</span>
-          <InfoTooltip text="NSGA-II is an evolutionary algorithm inspired by natural selection. It starts with a random 'population' of designs and iteratively breeds better and better solutions over multiple 'generations'. Larger population and more generations = better results but takes longer." wide />
+          <span className="font-display font-semibold text-white text-sm">
+            {mode === 'hybrid' ? 'Hybrid Pipeline Settings' : 'Optimization Settings'}
+          </span>
+          <InfoTooltip text={mode === 'hybrid'
+            ? "The hybrid pipeline runs 7 stages: LHS sampling → L0 physics screening → surrogate NSGA-II → constraint filtering → L1 2D CFD validation → optional L2 3D → final ranking."
+            : "NSGA-II evolutionary algorithm: starts with random designs and breeds better solutions over multiple generations using ML surrogates as the evaluator."
+          } wide />
         </div>
-        <div className="flex items-end gap-6 flex-wrap">
-          <div className="flex flex-col gap-1.5">
-            <label className="label flex items-center gap-1">
-              Population size
-              <InfoTooltip text="How many wing designs to evaluate simultaneously in each generation. Larger = more diverse exploration but slower per generation." />
-            </label>
-            <input type="number" min={20} max={200} value={config.pop_size}
-              onChange={e => setConfig(c => ({ ...c, pop_size: +e.target.value }))}
-              className="input-field w-28"
-            />
+
+        {mode === 'nsga2' ? (
+          <div className="flex items-end gap-6 flex-wrap">
+            <div className="flex flex-col gap-1.5">
+              <label className="label flex items-center gap-1">
+                Population size
+                <InfoTooltip text="How many designs to evaluate simultaneously each generation." />
+              </label>
+              <input type="number" min={20} max={200} value={config.pop_size}
+                onChange={e => setConfig(c => ({ ...c, pop_size: +e.target.value }))}
+                className="input-field w-28"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="label flex items-center gap-1">
+                Generations
+                <InfoTooltip text="How many rounds of evolution to run." />
+              </label>
+              <input type="number" min={10} max={300} value={config.n_gen}
+                onChange={e => setConfig(c => ({ ...c, n_gen: +e.target.value }))}
+                className="input-field w-28"
+              />
+            </div>
+            <div className="text-xs font-mono text-carbon-500 pb-2">
+              = {(config.pop_size * config.n_gen).toLocaleString()} ML evals
+            </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="label flex items-center gap-1">
-              Generations
-              <InfoTooltip text="How many rounds of evolution to run. Each generation, the best designs 'reproduce' and mutate to create the next generation. More generations = better convergence." />
-            </label>
-            <input type="number" min={10} max={300} value={config.n_gen}
-              onChange={e => setConfig(c => ({ ...c, n_gen: +e.target.value }))}
-              className="input-field w-28"
-            />
+        ) : (
+          <div className="flex items-end gap-6 flex-wrap">
+            <div className="flex flex-col gap-1.5">
+              <label className="label">LHS Init. Samples</label>
+              <input type="number" min={20} max={500} value={hybridConfig.n_init}
+                onChange={e => setHybridConfig(c => ({ ...c, n_init: +e.target.value }))}
+                className="input-field w-28"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="label">Pareto Targets</label>
+              <input type="number" min={5} max={50} value={hybridConfig.n_pareto}
+                onChange={e => setHybridConfig(c => ({ ...c, n_pareto: +e.target.value }))}
+                className="input-field w-28"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="label">Enable L2 3D</label>
+              <button
+                onClick={() => setHybridConfig(c => ({ ...c, enable_l2: !c.enable_l2 }))}
+                style={{
+                  padding: '6px 12px', borderRadius: '7px', border: 'none', cursor: 'pointer',
+                  background: hybridConfig.enable_l2 ? 'rgba(57,255,136,0.12)' : 'rgba(255,255,255,0.05)',
+                  color: hybridConfig.enable_l2 ? 'var(--phosphor)' : '#636880',
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem',
+                }}
+              >
+                {hybridConfig.enable_l2 ? 'ON — HPC needed' : 'OFF'}
+              </button>
+            </div>
           </div>
-          <div className="text-xs font-mono text-carbon-500 pb-2">
-            = {(config.pop_size * config.n_gen).toLocaleString()} ML evaluations
-            <span className="text-carbon-600 ml-1">(~{Math.round(config.pop_size * config.n_gen / 1000 * 10) / 10}s)</span>
-          </div>
-          <div className="flex-1" />
+        )}
+
+        <div className="flex items-center justify-between mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <FidelityBadge level={mode === 'hybrid' ? 1 : 0} label={mode === 'hybrid' ? 'Hybrid L0→L1' : 'L0 Surrogate'} />
           <button onClick={runOptimize} disabled={loading} className="btn-primary">
             {loading ? <Spinner size={14} /> : <Play size={14} />}
-            {loading ? `Optimising… (est. 1–3 min)` : 'Run NSGA-II'}
+            {loading ? 'Optimising…' : mode === 'hybrid' ? 'Run Hybrid Pipeline' : 'Run NSGA-II'}
           </button>
         </div>
+
         {loading && (
           <div className="mt-4 pt-4 border-t border-carbon-700/40">
-            <div className="flex items-center gap-3 text-xs font-mono text-carbon-400 mb-2">
+            <div className="flex items-center gap-3 text-xs font-mono text-carbon-400">
               <div className="w-3 h-3 rounded-full border border-neon-blue border-t-transparent animate-spin flex-shrink-0" />
-              Running evolutionary optimization — evaluating {config.pop_size}×{config.n_gen} design candidates…
+              {mode === 'hybrid' ? 'Running 7-stage hybrid pipeline…' : `Evaluating ${config.pop_size}×${config.n_gen} candidates…`}
             </div>
           </div>
         )}
@@ -238,7 +307,7 @@ export default function OptimizePage() {
                     <div className="flex justify-between"><span className="text-carbon-400">Efficiency</span><span className="neon-text-green font-semibold">{selected.pred?.efficiency?.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span className="text-carbon-400">Cl</span><span className="text-white">{selected.pred?.Cl?.toFixed(4)}</span></div>
                   </div>
-                  <p className="text-[11px] text-carbon-600 font-mono mt-2">These are ML predictions. Go to Validate to confirm with the physics solver.</p>
+                  <p className="text-[11px] text-carbon-600 font-mono mt-2">Surrogate estimates — go to Validate to confirm with L0 physics.</p>
                 </div>
               </div>
             ) : (
@@ -247,6 +316,52 @@ export default function OptimizePage() {
                 <p className="text-xs text-carbon-500 font-mono">Click a dot on the Pareto front to inspect its design parameters</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Hybrid pipeline results */}
+      {hybridResults && (
+        <div className="animate-slide-up mt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="label">Hybrid Pipeline Results</span>
+            <FidelityBadge level={1} label={`L0→L1 · ${hybridResults.n_evaluated_l1 ?? 0} L1 runs`} />
+          </div>
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <MetricCard label="L0 evaluated" value={hybridResults.n_evaluated_l0 ?? 0} color="amber" small />
+            <MetricCard label="L1 CFD runs" value={hybridResults.n_evaluated_l1 ?? 0} color="blue" small />
+            <MetricCard label="Constraint violations" value={hybridResults.n_constraint_violations ?? 0} color="red" small />
+            <MetricCard label="Wall time" value={`${hybridResults.wall_time_s?.toFixed(0)}s`} color="cyan" small />
+          </div>
+          <div className="flex flex-col gap-3">
+            {(hybridResults.ranked ?? []).slice(0, 5).map((c, i) => (
+              <div key={c.candidate_id} className="card p-4" style={{
+                borderLeft: `2px solid ${i === 0 ? 'var(--arc)' : 'rgba(255,255,255,0.08)'}`,
+              }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: i === 0 ? 'var(--arc)' : '#dde2ed' }}>
+                      #{c.rank} {i === 0 ? '— Best design' : ''}
+                    </span>
+                  </div>
+                  <FidelityBadge level={c.fidelity_used} trust={c.trust_label} converged={(c.l1_result || {}).converged} />
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    ['Downforce', c.final_Cl !== null ? `${c.final_Cl?.toFixed(4)} Cl` : '—', 'blue'],
+                    ['Efficiency', c.final_efficiency?.toFixed(2) ?? '—', 'green'],
+                    ['L1 conv.',  c.promoted_to_l1 ? ((c.l1_result || {}).converged ? 'Yes' : 'No') : 'N/A', 'cyan'],
+                    ['Confidence', c.confidence !== null ? `${(c.confidence * 100).toFixed(0)}%` : '—', 'amber'],
+                  ].map(([k, v, col]) => (
+                    <div key={k}>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.6rem', color: '#636880', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{k}</div>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', fontWeight: 600, color: `var(--${col === 'blue' ? 'arc' : col === 'green' ? 'phosphor' : col === 'cyan' ? 'teal' : 'ember'})` }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                {c.constraint_summary && <ConstraintPanel summary={c.constraint_summary} />}
+              </div>
+            ))}
           </div>
         </div>
       )}

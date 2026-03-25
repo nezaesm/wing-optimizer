@@ -6,7 +6,8 @@ import { api } from '../api/client'
 import {
   AccordionGroup, ParamSlider, MetricCard, WingCanvas,
   StatusBadge, ErrorBox, SectionTitle, ChartTooltip,
-  InfoTooltip, BeginnerTip, LoadingPage, ProgressBar
+  InfoTooltip, BeginnerTip, LoadingPage, ProgressBar,
+  FidelityBadge, ConfidenceBar, ConstraintPanel
 } from '../components/ui'
 
 const AIRFOIL_PARAMS = [
@@ -74,14 +75,16 @@ const METRIC_TOOLTIPS = {
 }
 
 export default function DesignPage() {
-  const [params, setParams]     = useState(BASELINE)
-  const [geometry, setGeometry] = useState(null)
-  const [metrics, setMetrics]   = useState(null)
-  const [mlPred, setMlPred]     = useState(null)
-  const [sweep, setSweep]       = useState(null)
-  const [loading, setLoading]   = useState({ geo: false, phys: false, ml: false, sweep: false })
-  const [error, setError]       = useState('')
-  const [baseline, setBaseline] = useState(null)
+  const [params, setParams]         = useState(BASELINE)
+  const [geometry, setGeometry]     = useState(null)
+  const [metrics, setMetrics]       = useState(null)
+  const [mlPred, setMlPred]         = useState(null)
+  const [uncertainPred, setUncPred] = useState(null)
+  const [constraints, setConstraints] = useState(null)
+  const [sweep, setSweep]           = useState(null)
+  const [loading, setLoading]       = useState({ geo: false, phys: false, ml: false, sweep: false, unc: false })
+  const [error, setError]           = useState('')
+  const [baseline, setBaseline]     = useState(null)
   const geoTimer = useRef(null)
 
   useEffect(() => {
@@ -106,7 +109,15 @@ export default function DesignPage() {
 
   const runPhysics = async () => {
     setLoad('phys', true); setError('')
-    try { setMetrics(await api.evaluate(params)) } catch (e) { setError(e.message) }
+    try {
+      const res = await api.evaluate(params)
+      setMetrics(res)
+      // Auto-run constraint check after physics
+      try {
+        const cs = await api.checkConstraints({ params, metrics: res.metrics || {} })
+        setConstraints(cs)
+      } catch {}
+    } catch (e) { setError(e.message) }
     setLoad('phys', false)
   }
 
@@ -114,6 +125,12 @@ export default function DesignPage() {
     setLoad('ml', true); setError('')
     try { setMlPred(await api.predict(params)) } catch (e) { setError(e.message) }
     setLoad('ml', false)
+  }
+
+  const runUncertain = async () => {
+    setLoad('unc', true); setError('')
+    try { setUncPred(await api.predictUncertain(params)) } catch (e) { setError(e.message) }
+    setLoad('unc', false)
   }
 
   const runSweep = async () => {
@@ -128,7 +145,7 @@ export default function DesignPage() {
   const reset = () => {
     setParams(BASELINE)
     fetchGeometry(BASELINE)
-    setMetrics(null); setMlPred(null); setSweep(null); setError('')
+    setMetrics(null); setMlPred(null); setUncPred(null); setSweep(null); setConstraints(null); setError('')
   }
 
   const m  = metrics?.metrics
@@ -213,11 +230,15 @@ export default function DesignPage() {
           <div className="flex flex-col gap-2 mt-1">
             <button onClick={runPhysics} disabled={loading.phys} className="btn-primary w-full justify-center">
               <Play size={13} />
-              {loading.phys ? 'Solving physics…' : 'Run Physics Solver'}
+              {loading.phys ? 'Solving…' : 'L0 Physics Eval'}
             </button>
             <button onClick={runML} disabled={loading.ml} className="btn-secondary w-full justify-center">
               <Zap size={13} />
               {loading.ml ? 'Predicting…' : 'ML Quick Predict'}
+            </button>
+            <button onClick={runUncertain} disabled={loading.unc} className="btn-ghost w-full justify-center" style={{ fontSize: '0.78rem' }}>
+              <Zap size={12} />
+              {loading.unc ? 'Running…' : 'Predict + Uncertainty'}
             </button>
             <button onClick={runSweep} disabled={loading.sweep} className="btn-ghost w-full justify-center" style={{ fontSize: '0.78rem' }}>
               <TrendingDown size={12} />
@@ -228,9 +249,10 @@ export default function DesignPage() {
           {/* Button explainer */}
           <div className="card p-4 flex flex-col gap-3">
             {[
-              { dot: 'var(--arc)',      label: 'Physics Solver',   desc: 'Real aerodynamic equations (~1s, accurate)' },
-              { dot: 'var(--teal)',     label: 'ML Quick Predict', desc: 'AI models trained on physics data (~1ms)' },
-              { dot: '#3e4257',         label: 'AoA Polar Sweep',  desc: 'Tests all angles of attack at once' },
+              { dot: 'var(--arc)',      label: 'L0 Physics Eval',       desc: 'Conceptual screening via panel/BL solver' },
+              { dot: 'var(--teal)',     label: 'ML Quick Predict',       desc: 'Ensemble surrogate — <1ms, no CFD' },
+              { dot: 'var(--ember)',    label: 'Predict + Uncertainty',  desc: 'Surrogate + GP confidence bands' },
+              { dot: '#3e4257',         label: 'AoA Polar Sweep',        desc: 'Sweep all angles at once' },
             ].map(({ dot, label, desc }) => (
               <div key={label} className="flex items-start gap-2.5">
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dot, flexShrink: 0, marginTop: '5px', boxShadow: `0 0 6px ${dot}` }} />
@@ -313,27 +335,33 @@ export default function DesignPage() {
             </div>
           </div>
 
-          {/* Flow status badges */}
+          {/* Fidelity + flow status */}
           {m && (
-            <div className="card p-4 flex items-center gap-4 flex-wrap">
-              <StatusBadge
-                ok={m.converged}
-                label={m.converged ? 'Flow converged' : 'Diverged'}
-                tooltip="Convergence means the physics solver found a stable solution. Divergence usually means the angle of attack is too extreme."
-              />
-              <StatusBadge
-                ok={!m.stall_flag}
-                label={m.stall_flag ? '⚠ Stall detected' : 'Attached flow'}
-                tooltip="Stall occurs when the angle of attack is too steep and airflow separates from the wing surface. This causes a sudden loss of downforce."
-              />
-              {m.x_tr_upper !== undefined && (
-                <div className="flex items-center gap-1.5" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: '#636880' }}>
-                  <InfoTooltip text="Transition: where airflow changes from smooth (laminar) to turbulent. Earlier transition means more turbulent flow and higher skin friction drag." />
-                  <span>Transition: {m.x_tr_upper?.toFixed(2)}c upper / {m.x_tr_lower?.toFixed(2)}c lower</span>
-                </div>
-              )}
+            <div className="card p-4 flex flex-col gap-3">
+              <FidelityBadge level={0} label="L0 Conceptual Screening" trust="moderate" converged={m.converged} />
+              <div className="flex items-center gap-3 flex-wrap">
+                <StatusBadge
+                  ok={m.converged}
+                  label={m.converged ? 'Flow converged' : 'Diverged'}
+                  tooltip="Convergence means the physics solver found a stable solution."
+                />
+                <StatusBadge
+                  ok={!m.stall_flag}
+                  label={m.stall_flag ? '⚠ Stall detected' : 'Attached flow'}
+                  tooltip="Stall occurs when the angle of attack is too steep and airflow separates from the wing surface."
+                />
+                {m.x_tr_upper !== undefined && (
+                  <div className="flex items-center gap-1.5" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: '#636880' }}>
+                    <InfoTooltip text="Transition location: where laminar flow becomes turbulent." />
+                    <span>xtr: {m.x_tr_upper?.toFixed(2)}c↑ / {m.x_tr_lower?.toFixed(2)}c↓</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
+
+          {/* Constraint panel */}
+          {constraints && <ConstraintPanel summary={constraints} />}
 
           <ErrorBox message={error} />
 
@@ -428,10 +456,10 @@ export default function DesignPage() {
                     <span className="label">Prediction confidence</span>
                     <InfoTooltip text="The Gaussian Process estimates confidence based on how similar this design is to the training data. High confidence (>80%) means the models are in familiar territory." />
                   </div>
-                  <ProgressBar value={mlPred.reliability * 100} color="green" showLabel />
+                  <ProgressBar value={(mlPred.reliability ?? 0.7) * 100} color="green" showLabel />
                   <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880', marginTop: '6px' }}>
-                    {mlPred.reliability > 0.8 ? 'High confidence — well-covered by training data'
-                    : mlPred.reliability > 0.5 ? 'Moderate — verify with physics solver'
+                    {(mlPred.reliability ?? 0.7) > 0.8 ? 'High confidence — well-covered by training data'
+                    : (mlPred.reliability ?? 0.7) > 0.5 ? 'Moderate — verify with physics solver'
                     : 'Low — design outside training distribution'}
                   </p>
                 </div>
@@ -448,6 +476,61 @@ export default function DesignPage() {
               </div>
             )}
           </div>
+
+          {/* Uncertainty prediction panel */}
+          {uncertainPred && (
+            <div className="card p-5 animate-slide-up">
+              <div className="flex items-center gap-1 mb-3">
+                <span className="label">Surrogate Uncertainty</span>
+                <InfoTooltip text="Uses the Gaussian Process model's posterior standard deviation to estimate prediction uncertainty. Flags if the design is outside the training distribution (extrapolation)." wide />
+              </div>
+              <div className="flex flex-col gap-3">
+                <ConfidenceBar
+                  confidence={uncertainPred.confidence ?? 0}
+                  label="Model confidence"
+                  stdPct={uncertainPred.Cl_std && uncertainPred.Cl ? Math.abs(uncertainPred.Cl_std / uncertainPred.Cl) : undefined}
+                />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <FidelityBadge level={0} trust={uncertainPred.trust_label} />
+                  {uncertainPred.is_extrapolation && (
+                    <span style={{
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem',
+                      color: 'var(--signal)', padding: '2px 7px',
+                      borderRadius: '5px', background: 'rgba(255,61,90,0.08)',
+                      border: '1px solid rgba(255,61,90,0.20)',
+                    }}>
+                      EXTRAPOLATION WARNING
+                    </span>
+                  )}
+                </div>
+                {uncertainPred.distribution_distance !== null && (
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880' }}>
+                    Distribution distance: {uncertainPred.distribution_distance?.toFixed(2)} σ
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  {[
+                    ['Cl',       uncertainPred.Cl?.toFixed(4)],
+                    ['Cd',       uncertainPred.Cd?.toFixed(5)],
+                    ['Cl ±',     uncertainPred.Cl_std ? `±${uncertainPred.Cl_std.toFixed(4)}` : '—'],
+                    ['Cd ±',     uncertainPred.Cd_std ? `±${uncertainPred.Cd_std.toFixed(5)}` : '—'],
+                    ['Eff.',     uncertainPred.efficiency?.toFixed(2)],
+                    ['UCB score',uncertainPred.acquisition_score?.toFixed(3)],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex justify-between items-baseline">
+                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>{k}</span>
+                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', color: '#dde2ed' }}>{v ?? '—'}</span>
+                    </div>
+                  ))}
+                </div>
+                {uncertainPred.notes?.length > 0 && (
+                  <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.72rem', color: '#636880', lineHeight: 1.55, borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+                    {uncertainPred.notes[0]}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* vs Baseline comparison */}
           {metrics?.vs_baseline && (

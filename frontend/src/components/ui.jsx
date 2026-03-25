@@ -1,7 +1,8 @@
 // src/components/ui.jsx — shared primitive components
 
 import React, { useState } from 'react'
-import { Loader2, HelpCircle, TrendingUp, TrendingDown, Minus, ChevronDown } from 'lucide-react'
+import { Loader2, HelpCircle, TrendingUp, TrendingDown, Minus, ChevronDown,
+         CheckCircle2, AlertTriangle, XCircle, Activity } from 'lucide-react'
 
 // ── Spinner ───────────────────────────────────────────────────────────────────
 export function Spinner({ size = 16, className = '' }) {
@@ -494,6 +495,238 @@ export function ProgressBar({ value, max = 100, color = 'blue', showLabel = fals
           {pct.toFixed(0)}%
         </span>
       )}
+    </div>
+  )
+}
+
+// ── FidelityBadge — shows evaluation fidelity level ──────────────────────────
+export function FidelityBadge({ level, label, trust, converged }) {
+  const config = {
+    0: { color: 'var(--ember)',    bg: 'rgba(255,176,32,0.10)',  border: 'rgba(255,176,32,0.25)',  text: 'L0 Conceptual' },
+    1: { color: 'var(--arc)',      bg: 'rgba(0,200,255,0.10)',   border: 'rgba(0,200,255,0.25)',   text: 'L1 2D CFD' },
+    2: { color: 'var(--phosphor)', bg: 'rgba(57,255,136,0.10)',  border: 'rgba(57,255,136,0.25)',  text: 'L2 3D RANS' },
+  }
+  const cfg = config[level ?? 0] || config[0]
+  const displayLabel = label || cfg.text
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '5px',
+        padding: '3px 8px', borderRadius: '6px',
+        background: cfg.bg, border: `1px solid ${cfg.border}`,
+        fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', fontWeight: 600,
+        color: cfg.color, letterSpacing: '0.06em', textTransform: 'uppercase',
+      }}>
+        <Activity size={9} />
+        {displayLabel}
+      </span>
+      {trust && (
+        <TrustLabel trust={trust} />
+      )}
+      {converged !== undefined && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: '4px',
+          padding: '3px 7px', borderRadius: '6px',
+          background: converged ? 'rgba(57,255,136,0.08)' : 'rgba(255,61,90,0.08)',
+          border: `1px solid ${converged ? 'rgba(57,255,136,0.20)' : 'rgba(255,61,90,0.20)'}`,
+          fontFamily: 'JetBrains Mono, monospace', fontSize: '0.6rem',
+          color: converged ? 'var(--phosphor)' : 'var(--signal)',
+        }}>
+          {converged ? <CheckCircle2 size={8} /> : <XCircle size={8} />}
+          {converged ? 'CONVERGED' : 'NOT CONV.'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ── TrustLabel — confidence trust level pill ──────────────────────────────────
+export function TrustLabel({ trust }) {
+  const config = {
+    high:          { color: 'var(--phosphor)', bg: 'rgba(57,255,136,0.10)',  border: 'rgba(57,255,136,0.25)'  },
+    moderate:      { color: 'var(--arc)',       bg: 'rgba(0,200,255,0.10)',   border: 'rgba(0,200,255,0.25)'   },
+    low:           { color: 'var(--ember)',      bg: 'rgba(255,176,32,0.10)',  border: 'rgba(255,176,32,0.25)'  },
+    extrapolation: { color: 'var(--signal)',     bg: 'rgba(255,61,90,0.10)',   border: 'rgba(255,61,90,0.25)'   },
+    stub:          { color: '#636880',           bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.10)' },
+    unset:         { color: '#636880',           bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.10)' },
+  }
+  const cfg = config[trust] || config.unset
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      padding: '3px 7px', borderRadius: '6px',
+      background: cfg.bg, border: `1px solid ${cfg.border}`,
+      fontFamily: 'JetBrains Mono, monospace', fontSize: '0.6rem', fontWeight: 600,
+      color: cfg.color, letterSpacing: '0.05em', textTransform: 'uppercase',
+    }}>
+      {trust?.toUpperCase() ?? 'UNSET'}
+    </span>
+  )
+}
+
+// ── ConfidenceBar — shows model confidence with uncertainty ───────────────────
+export function ConfidenceBar({ confidence = 0, label = 'Confidence', stdPct }) {
+  const pct  = Math.min(Math.max(confidence * 100, 0), 100)
+  const color = pct >= 80 ? 'var(--phosphor)'
+              : pct >= 60 ? 'var(--arc)'
+              : pct >= 40 ? 'var(--ember)'
+              :              'var(--signal)'
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-1.5">
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          {label}
+        </span>
+        <div className="flex items-center gap-2">
+          {stdPct !== undefined && stdPct !== null && (
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>
+              ±{(stdPct * 100).toFixed(1)}%
+            </span>
+          )}
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, color }}>
+            {pct.toFixed(0)}%
+          </span>
+        </div>
+      </div>
+      <div style={{
+        height: '4px', borderRadius: '99px',
+        background: 'rgba(255,255,255,0.07)', overflow: 'hidden',
+      }}>
+        <div style={{
+          height: '100%', width: `${pct}%`,
+          background: color,
+          boxShadow: `0 0 8px ${color}`,
+          borderRadius: '99px',
+          transition: 'width 0.6s cubic-bezier(0.23,1,0.32,1)',
+        }} />
+      </div>
+    </div>
+  )
+}
+
+// ── ConstraintPanel — shows constraint check results ─────────────────────────
+export function ConstraintPanel({ summary }) {
+  const [open, setOpen] = useState(false)
+  if (!summary) return null
+
+  const { feasible, n_violations, n_hard_violations, n_warnings, results = [] } = summary
+  const statusColor = feasible
+    ? (n_warnings > 0 ? 'var(--ember)' : 'var(--phosphor)')
+    : 'var(--signal)'
+  const statusIcon = feasible
+    ? (n_warnings > 0 ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />)
+    : <XCircle size={12} />
+
+  return (
+    <div style={{
+      borderRadius: '10px',
+      border: `1px solid ${feasible ? (n_warnings > 0 ? 'rgba(255,176,32,0.25)' : 'rgba(57,255,136,0.20)') : 'rgba(255,61,90,0.30)'}`,
+      background: feasible ? (n_warnings > 0 ? 'rgba(255,176,32,0.05)' : 'rgba(57,255,136,0.05)') : 'rgba(255,61,90,0.06)',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between"
+        style={{ padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+      >
+        <div className="flex items-center gap-2">
+          <span style={{ color: statusColor }}>{statusIcon}</span>
+          <span style={{
+            fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', fontWeight: 600,
+            color: statusColor, textTransform: 'uppercase', letterSpacing: '0.08em',
+          }}>
+            {feasible ? 'Constraints OK' : `${n_hard_violations} Hard Violation${n_hard_violations !== 1 ? 's' : ''}`}
+          </span>
+          {n_warnings > 0 && (
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: 'var(--ember)' }}>
+              {n_warnings} warning{n_warnings !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <ChevronDown size={12} style={{
+          color: '#636880',
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.2s',
+        }} />
+      </button>
+
+      {/* Constraint rows */}
+      {open && results.length > 0 && (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 0' }}>
+          {results.map((r, i) => {
+            const sev = r.severity
+            const rowColor = sev === 'ok' ? '#636880'
+              : sev === 'warning' ? 'var(--ember)'
+              : sev === 'violation' || sev === 'hard_violation' ? 'var(--signal)'
+              : '#636880'
+            const icon = sev === 'ok' ? <CheckCircle2 size={9} />
+              : sev === 'warning' ? <AlertTriangle size={9} />
+              : <XCircle size={9} />
+            return (
+              <div key={i} className="flex items-start gap-2.5 px-3 py-1.5">
+                <span style={{ color: rowColor, marginTop: '1px', flexShrink: 0 }}>{icon}</span>
+                <div className="flex-1 min-w-0">
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: rowColor }}>
+                    {r.name}
+                  </span>
+                  {r.message && (
+                    <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.72rem', color: '#636880', marginLeft: '6px' }}>
+                      {r.message}
+                    </span>
+                  )}
+                </div>
+                {r.margin !== undefined && r.margin !== null && (
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: rowColor, flexShrink: 0 }}>
+                    {r.margin > 0 ? '+' : ''}{r.margin.toFixed(2)}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── ConditionSelector — named condition set picker ────────────────────────────
+export function ConditionSelector({ value, onChange }) {
+  const sets = [
+    { id: 'race_conditions',   label: 'Race Conditions',    sub: '3 pts — high/low speed + slow corner' },
+    { id: 'aoa_sweep',         label: 'AoA Sweep',          sub: '8 pts — angle of attack range' },
+    { id: 'ride_height_sweep', label: 'Ride Height Sweep',  sub: '5 pts — ground clearance variation' },
+    { id: 'yaw_sweep',         label: 'Yaw Sweep',          sub: '5 pts — crosswind / car yaw' },
+    { id: 'full_envelope',     label: 'Full Envelope',      sub: '12 pts — 3×4 operating grid' },
+  ]
+  return (
+    <div>
+      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.09em', color: '#636880', marginBottom: '8px' }}>
+        Condition Set
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {sets.map(s => (
+          <button
+            key={s.id}
+            onClick={() => onChange(s.id)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+              padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+              background: value === s.id ? 'rgba(0,200,255,0.10)' : 'rgba(255,255,255,0.04)',
+              borderLeft: `2px solid ${value === s.id ? 'var(--arc)' : 'transparent'}`,
+              transition: 'all 0.15s',
+            }}
+          >
+            <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', fontWeight: 500, color: value === s.id ? 'var(--arc)' : '#dde2ed' }}>
+              {s.label}
+            </span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>
+              {s.sub}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

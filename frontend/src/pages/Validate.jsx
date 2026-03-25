@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts'
 import { ShieldCheck } from 'lucide-react'
 import { api } from '../api/client'
-import { Spinner, SectionTitle, MetricCard, StatusBadge, ErrorBox, InfoTooltip, BeginnerTip, LoadingPage, ProgressBar } from '../components/ui'
+import { Spinner, SectionTitle, MetricCard, StatusBadge, ErrorBox, InfoTooltip, BeginnerTip, LoadingPage, ProgressBar, FidelityBadge } from '../components/ui'
 
 export default function ValidatePage() {
   const [data, setData]       = useState(null)
@@ -45,22 +45,29 @@ export default function ValidatePage() {
     <div className="animate-fade-in">
       <SectionTitle
         step={4}
-        sub="The top designs from the Pareto front are re-evaluated using the full physics solver to confirm the ML predictions are accurate."
+        sub="Top Pareto-front designs are re-evaluated using the L0 conceptual physics solver to verify surrogate predictions. For higher fidelity, use the Hybrid Pipeline (Step 3) with L1 2D CFD validation."
       >
         Physics Validation
       </SectionTitle>
 
+      <div className="flex items-center gap-2 mb-3">
+        <FidelityBadge level={0} label="L0 Conceptual Screening" trust="moderate" />
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880' }}>
+          Panel/BL physics · ±15–25% uncertainty · fast screening only
+        </span>
+      </div>
+
       <BeginnerTip icon="🔬">
-        <strong>Why do we validate?</strong> The ML models are fast but approximate. Before trusting the optimization results, we run the top Pareto-front designs through the original physics solver. If the physics results match the ML predictions closely (low error %), we can trust the optimization found genuinely good designs.
+        <strong>Why validate?</strong> The ML surrogates are fast but approximate. Re-running top designs through the L0 physics solver confirms predictions are in the right range. For engineering decisions, use the Hybrid Pipeline (Step 3) to promote shortlisted designs to L1 2D RANS CFD validation.
       </BeginnerTip>
 
       <div className="flex items-center gap-4 mt-4 mb-4">
         <button onClick={runValidation} disabled={running} className="btn-primary">
           {running ? <Spinner size={14} /> : <ShieldCheck size={14} />}
-          {running ? 'Running physics validation…' : 'Re-run Validation'}
+          {running ? 'Running L0 validation…' : 'Re-run L0 Validation'}
         </button>
         <span className="text-xs text-carbon-400 font-mono">
-          Runs top 10 Pareto designs through the full aerodynamic solver (~10 seconds)
+          Runs top 10 Pareto designs through the L0 panel/BL solver (~10s). Results are conceptual estimates, not CFD.
         </span>
       </div>
 
@@ -185,7 +192,7 @@ export default function ValidatePage() {
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <div className="w-2 h-2 rounded-full bg-neon-green" />
-                        <span className="text-xs font-mono font-semibold neon-text-green">PHYSICS (ground truth)</span>
+                        <span className="text-xs font-mono font-semibold neon-text-green">L0 PHYSICS (conceptual)</span>
                       </div>
                       {[
                         ['Downforce', selected.physics?.downforce_N?.toFixed(1), 'N'],

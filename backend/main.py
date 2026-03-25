@@ -3,24 +3,35 @@ main.py
 -------
 Flask REST API — Wing Optimizer Backend
 
-All endpoints mirror the FastAPI design (same URLs, same JSON contracts).
-Swap fastapi → flask with zero change to frontend or ML layers.
-
 Endpoints:
   GET  /health
   GET  /design/baseline
-  POST /design/evaluate        body: WingParams JSON
-  POST /design/geometry        body: WingParams JSON
-  POST /design/sweep           body: {params, aoa_start, aoa_end, n_points}
-  POST /predict                body: WingParams JSON
+  POST /design/evaluate            body: WingParams JSON
+  POST /design/geometry            body: WingParams JSON
+  POST /design/sweep               body: {params, aoa_start, aoa_end, n_points}
+  POST /predict                    body: WingParams JSON
   GET  /models/metrics
-  POST /optimize               body: {pop_size, n_gen, n_validate}
+  POST /optimize                   body: {pop_size, n_gen, n_validate}
+  POST /optimize/hybrid            body: {n_init, n_pareto, enable_l2}
   GET  /optimize/results
-  POST /validate               query: ?n_top=10
+  POST /validate                   query: ?n_top=10
   GET  /validate/results
-  GET  /sensitivity            query: ?param=aoa_deg&n_points=20
-  GET  /sensitivity/all        query: ?n_points=15
+  GET  /sensitivity                query: ?param=aoa_deg&n_points=20
+  GET  /sensitivity/all            query: ?n_points=15
   GET  /dataset/stats
+
+  Multi-fidelity (new):
+  POST /fidelity/evaluate          body: {params, level, condition}
+  POST /fidelity/multi-condition   body: {params, condition_set}
+  POST /fidelity/validate-geometry body: WingParams JSON
+  POST /predict/uncertain          body: WingParams JSON
+
+  CFD management (new):
+  GET  /cfd/status/<run_id>
+  GET  /cfd/artifacts
+
+  Constraints (new):
+  POST /constraints/check          body: {params, metrics}
 
 Run:
     python main.py          # development
@@ -321,6 +332,174 @@ def dataset_stats():
             for name in PARAM_NAMES if name in df.columns
         },
     })
+
+
+# ── Multi-fidelity evaluation ─────────────────────────────────────────────────
+
+@app.route("/fidelity/evaluate", methods=["POST"])
+def fidelity_evaluate():
+    """Run evaluation at a specified fidelity level (0, 1, or 2)."""
+    data      = request.get_json() or {}
+    params    = _parse_params(data.get("params", data))
+    level     = int(data.get("level", 0))
+    condition = data.get("condition") or {}
+    try:
+        from fidelity import get_evaluator
+        ev     = get_evaluator(level)
+        result = ev.evaluate(params, condition or None)
+        try:
+            from dataclasses import asdict
+            result_dict = asdict(result)
+        except Exception:
+            result_dict = result if isinstance(result, dict) else {}
+        return jsonify(result_dict)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+@app.route("/fidelity/multi-condition", methods=["POST"])
+def multi_condition_evaluate():
+    """Evaluate a design across a named condition set."""
+    data           = request.get_json() or {}
+    params         = _parse_params(data.get("params", data))
+    condition_set  = data.get("condition_set", "race_conditions")
+    level          = int(data.get("level", 0))
+    try:
+        from fidelity import get_evaluator
+        from conditions.condition_set import get_condition_set
+        from conditions.evaluator import MultiConditionEvaluator
+        ev      = get_evaluator(level)
+        cset    = get_condition_set(condition_set)
+        mc_eval = MultiConditionEvaluator(ev)
+        result  = mc_eval.evaluate(params, cset)
+        try:
+            from dataclasses import asdict
+            result_dict = asdict(result)
+        except Exception:
+            result_dict = result if isinstance(result, dict) else {}
+        return jsonify(result_dict)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+@app.route("/fidelity/validate-geometry", methods=["POST"])
+def validate_geometry():
+    """Validate wing geometry parameters and return report."""
+    data   = request.get_json() or {}
+    params = _parse_params(data)
+    try:
+        from geometry.wing_definition import WingDefinition
+        from geometry.geometry_validator import validate
+        wd     = WingDefinition.from_flat_dict(params)
+        report = validate(wd)
+        return jsonify({
+            "valid":       report.valid,
+            "has_warnings": report.has_warnings,
+            "errors":      report.errors,
+            "warnings":    report.warnings,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ── Uncertainty-aware prediction ──────────────────────────────────────────────
+
+@app.route("/predict/uncertain", methods=["POST"])
+def predict_uncertain():
+    """Return surrogate prediction with full uncertainty quantification."""
+    data   = request.get_json() or {}
+    params = _parse_params(data)
+    try:
+        from models.surrogate import predict_uncertain as _pu
+        sr = _pu(params)
+        return jsonify(sr.to_dict())
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ── Hybrid optimization ───────────────────────────────────────────────────────
+
+@app.route("/optimize/hybrid", methods=["POST"])
+def optimize_hybrid():
+    """Run the 7-stage hybrid multi-fidelity optimization pipeline."""
+    data      = request.get_json() or {}
+    n_init    = int(data.get("n_init", 100))
+    n_pareto  = int(data.get("n_pareto", 20))
+    enable_l2 = bool(data.get("enable_l2", False))
+    try:
+        from optimization.hybrid_pipeline import HybridPipeline
+        pipeline = HybridPipeline(
+            l0_top_k        = int(data.get("l0_top_k", 30)),
+            surrogate_top_k = int(data.get("surrogate_top_k", 10)),
+            l1_top_k        = int(data.get("l1_top_k", 5)),
+            enable_l2       = enable_l2,
+        )
+        result = pipeline.run(n_init=n_init, n_pareto=n_pareto)
+        out    = result.to_dict()
+        # Also save to results dir for caching
+        out_path = RESULTS_DIR / "hybrid_results.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        out_path.write_text(_json.dumps(out, indent=2, default=str))
+        return jsonify(out)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ── Constraints ───────────────────────────────────────────────────────────────
+
+@app.route("/constraints/check", methods=["POST"])
+def check_constraints():
+    """Check engineering constraints for a given design + metrics."""
+    data    = request.get_json() or {}
+    params  = _parse_params(data.get("params", data))
+    metrics = data.get("metrics", {})
+    try:
+        from constraints.engine import ConstraintEngine
+        engine  = ConstraintEngine()
+        summary = engine.evaluate(params, metrics)
+        return jsonify(summary.to_dict())
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ── CFD status / artifacts ────────────────────────────────────────────────────
+
+@app.route("/cfd/status/<run_id>", methods=["GET"])
+def cfd_status(run_id: str):
+    """Get status of a running or completed CFD job."""
+    try:
+        from cfd.artifact_store import ArtifactStore
+        store  = ArtifactStore()
+        record = store.get_record(run_id)
+        if record is None:
+            return _err(f"run_id '{run_id}' not found", 404)
+        return jsonify(record.to_dict())
+    except Exception as e:
+        return _err(str(e), 500)
+
+
+@app.route("/cfd/artifacts", methods=["GET"])
+def cfd_artifacts():
+    """List recent CFD run records."""
+    fidelity = request.args.get("fidelity")
+    limit    = int(request.args.get("limit", 20))
+    try:
+        from cfd.artifact_store import ArtifactStore
+        store   = ArtifactStore()
+        records = store.list_records(
+            limit    = limit,
+            fidelity = int(fidelity) if fidelity is not None else None,
+        )
+        return jsonify({"records": records, "summary": store.summary()})
+    except Exception as e:
+        return _err(str(e), 500)
 
 
 if __name__ == "__main__":

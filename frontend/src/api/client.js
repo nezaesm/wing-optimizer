@@ -26,10 +26,20 @@ export const api = {
   predict:      (params) => request('POST', '/predict', params),
   modelMetrics: ()       => request('GET',  '/models/metrics'),
   optimize:     (body)   => request('POST', '/optimize', body),
+  optimizeHybrid: (body) => request('POST', '/optimize/hybrid', body),
   optimizeResults: ()    => request('GET',  '/optimize/results'),
   validate:     (n=10)   => request('POST', `/validate?n_top=${n}`),
   validateResults: ()    => request('GET',  '/validate/results'),
   sensitivity:  (param, n=20) => request('GET', `/sensitivity?param=${param}&n_points=${n}`),
   sensitivityAll: (n=15)     => request('GET', `/sensitivity/all?n_points=${n}`),
   datasetStats: ()       => request('GET',  '/dataset/stats'),
+
+  // Multi-fidelity
+  fidelityEvaluate:  (body)         => request('POST', '/fidelity/evaluate', body),
+  multiCondition:    (body)         => request('POST', '/fidelity/multi-condition', body),
+  validateGeometry:  (params)       => request('POST', '/fidelity/validate-geometry', params),
+  predictUncertain:  (params)       => request('POST', '/predict/uncertain', params),
+  checkConstraints:  (body)         => request('POST', '/constraints/check', body),
+  cfdStatus:         (runId)        => request('GET',  `/cfd/status/${runId}`),
+  cfdArtifacts:      (limit=20)     => request('GET',  `/cfd/artifacts?limit=${limit}`),
 }
