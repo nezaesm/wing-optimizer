@@ -1,7 +1,7 @@
 # CLAUDE.md — WingOpt Project
 
 > Auto-maintained by Claude. Updated whenever project changes are made.
-> Last updated: 2026-03-25
+> Last updated: 2026-03-26
 
 ---
 
@@ -79,7 +79,7 @@ wing-optimizer/
     ├── tailwind.config.js    # Fonts: Syne (display), Outfit (sans), JetBrains Mono. Colors: carbon (950→400), neon (blue/cyan/green/amber/red) — updated to electric palette
     ├── src/
     │   ├── main.jsx          # React entry — BrowserRouter wrapping
-    │   ├── App.jsx           # Nav shell with step-numbered pills, API status, offline banner
+    │   ├── App.jsx           # Nav shell — desktop top nav + mobile bottom tab bar + slide-in drawer
     │   ├── index.css         # Design system: glassmorphism cards, neon accents, tooltips, animations
     │   ├── api/client.js     # All API calls — BASE = VITE_API_URL || '/api'
     │   ├── components/ui.jsx # Shared primitives (see component list below)
@@ -291,6 +291,11 @@ Trust labels: `high` (dist < 1.2σ), `moderate` (< 2σ), `low` (< 3σ), `extrapo
 ---
 
 ## Changelog
+
+### 2026-03-26 (v5 — Mobile responsiveness)
+- **App.jsx**: Fixed bottom tab bar on mobile with step badges + active indicator; slide-in hamburger drawer with full nav + API status; desktop nav unchanged; `env(safe-area-inset-*)` for notched phones
+- **index.css**: Mobile media query block — 48px min tap targets, 16px inputs (prevents iOS zoom), 24px slider thumbs, disabled hover lifts on touch, hidden scrollbars, touch-friendly accordion headers
+- **Design.jsx**: Single-column stack on mobile → 3-column grid on desktop; metrics grid 2-col mobile / 3-col desktop; all `col-span-N` → `md:col-span-N`
 
 ### 2026-03-25 (v4 — Multi-fidelity engineering upgrade)
 - **Multi-fidelity stack**: L0 (conceptual panel/BL), L1 (2D RANS SU2), L2 (3D RANS OpenFOAM) evaluators with `FidelityResult` dataclass, stub-mode auto-detection, provenance tracking + trust labels
