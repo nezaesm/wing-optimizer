@@ -174,10 +174,11 @@ export default function DesignPage() {
         {' '}icons for plain-English explanations.
       </BeginnerTip>
 
-      <div className="grid grid-cols-12 gap-5 mt-5">
+      {/* Mobile: stacked | Desktop: 12-col grid */}
+      <div className="flex flex-col md:grid md:grid-cols-12 gap-4 md:gap-5 mt-4 md:mt-5">
 
         {/* ── Left panel: parameter sliders ─────────────────────────────────── */}
-        <div className="col-span-3 flex flex-col gap-3">
+        <div className="md:col-span-3 flex flex-col gap-3">
 
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -266,7 +267,7 @@ export default function DesignPage() {
         </div>
 
         {/* ── Centre panel: geometry + results ──────────────────────────────── */}
-        <div className="col-span-6 flex flex-col gap-4">
+        <div className="md:col-span-6 flex flex-col gap-4">
 
           {/* Wing cross-section preview */}
           <div className="card p-5">
@@ -313,7 +314,7 @@ export default function DesignPage() {
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-3 stagger">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 stagger">
               <MetricCard
                 label="Downforce" value={m ? m.downforce_N.toFixed(0) : '—'} unit="N" color="blue"
                 tooltip={METRIC_TOOLTIPS.downforce}
@@ -392,7 +393,7 @@ export default function DesignPage() {
         </div>
 
         {/* ── Right panel: ML predictions ───────────────────────────────────── */}
-        <div className="col-span-3 flex flex-col gap-4">
+        <div className="md:col-span-3 flex flex-col gap-4">
 
           {/* ML Panel */}
           <div className="card p-5">

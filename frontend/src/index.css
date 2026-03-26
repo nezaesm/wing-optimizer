@@ -508,3 +508,107 @@
   50%       { box-shadow: 0 0 0 4px rgba(0,200,255,0); }
 }
 .nav-active-dot { animation: navPulse 2s ease-in-out infinite; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Touch-friendly tap targets ────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  /* Prevent iOS font zoom on inputs */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Larger tap targets for buttons */
+  .btn-primary, .btn-secondary, .btn-ghost {
+    min-height: 48px;
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    border-radius: 14px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Sliders — bigger thumb + track on mobile */
+  input[type='range'] {
+    height: 28px;
+    cursor: pointer;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Cards — slightly less padding */
+  .card {
+    border-radius: 14px;
+  }
+  .card-sm {
+    border-radius: 10px;
+  }
+
+  /* Input fields — larger for touch */
+  .input-field {
+    padding: 12px 14px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+
+  /* Disable hover lift on touch (causes sticky hover on iOS) */
+  .card:hover {
+    transform: none;
+  }
+
+  /* Tooltips — position above on mobile, wider */
+  .tooltip-bubble {
+    width: min(280px, 90vw);
+    left: auto !important;
+    right: 0;
+    transform: none !important;
+  }
+
+  /* Section titles — smaller on mobile */
+  .section-header {
+    font-size: 1rem;
+  }
+
+  /* Accordion headers — larger tap area */
+  .accordion-header {
+    padding: 14px 16px !important;
+    min-height: 52px;
+  }
+
+  /* Scrollbar hidden for cleaner mobile look */
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}
+
+/* ── Responsive grid helpers ───────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+  .mobile-full {
+    width: 100% !important;
+  }
+  .mobile-hide {
+    display: none !important;
+  }
+  .mobile-text-sm {
+    font-size: 0.8rem !important;
+  }
+}
+
+/* ── Safe area padding utilities ───────────────────────────────────────────── */
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-pt {
+  padding-top: env(safe-area-inset-top, 0px);
+}
