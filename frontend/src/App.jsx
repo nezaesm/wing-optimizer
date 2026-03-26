@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { Activity, Sliders, FlaskConical, Target, BarChart3, ShieldCheck, Info, WifiOff, Menu, X } from 'lucide-react'
+import { Activity, Sliders, FlaskConical, Target, BarChart3, ShieldCheck, Info, WifiOff, Menu, X, Upload } from 'lucide-react'
 import { api } from './api/client'
 import IntroPage from './pages/Intro'
 
@@ -11,6 +11,7 @@ import ValidatePage    from './pages/Validate'
 import SensitivityPage from './pages/Sensitivity'
 import DatasetPage     from './pages/Dataset'
 import AboutPage       from './pages/About'
+import UploadPage     from './pages/Upload'
 
 const NAV = [
   { path: '/',            label: 'Design',      icon: Sliders,      step: 1 },
@@ -19,6 +20,7 @@ const NAV = [
   { path: '/validate',    label: 'Validate',     icon: ShieldCheck,  step: 4 },
   { path: '/sensitivity', label: 'Sensitivity',  icon: BarChart3,    step: 5 },
   { path: '/dataset',     label: 'Dataset',      icon: Activity,     step: 6 },
+  { path: '/upload',      label: 'Upload',       icon: Upload,       step: null },
   { path: '/about',       label: 'About',        icon: Info,         step: null },
 ]
 
@@ -372,6 +374,7 @@ export default function App() {
             <Route path="/validate"    element={<ValidatePage />} />
             <Route path="/sensitivity" element={<SensitivityPage />} />
             <Route path="/dataset"     element={<DatasetPage />} />
+            <Route path="/upload"      element={<UploadPage />} />
             <Route path="/about"       element={<AboutPage />} />
           </Routes>
         </div>

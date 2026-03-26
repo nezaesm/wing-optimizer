@@ -502,5 +502,156 @@ def cfd_artifacts():
         return _err(str(e), 500)
 
 
+# ── 3D VLM Analysis ───────────────────────────────────────────────────────────
+
+@app.route("/design/analyze-3d", methods=["POST"])
+def analyze_3d():
+    """
+    Full 3D Vortex Lattice Method analysis.
+
+    Accepts all standard WingOpt params plus optional 3D extensions:
+      taper_ratio (0.3–1.0), sweep_deg (0–30), twist_deg (0–8),
+      dihedral_deg (0–10), flap_gap_pct (0–3), flap_overlap_pct (0–2),
+      ride_height_pct (2–50), velocity_ms, rho, chord_m
+
+    Returns: CL, CD_induced, downforce_N, drag_N, efficiency,
+             ground_effect_factor, spanwise distributions, per-panel Cp.
+    """
+    data = request.get_json() or {}
+    params = _parse_params(data)
+
+    # 3D-only params (with safe defaults)
+    ext_params = {
+        "taper_ratio":      float(np.clip(data.get("taper_ratio",      1.0),  0.2, 1.0)),
+        "sweep_deg":        float(np.clip(data.get("sweep_deg",         0.0),  0.0, 35.0)),
+        "twist_deg":        float(np.clip(data.get("twist_deg",         0.0),  0.0, 10.0)),
+        "dihedral_deg":     float(np.clip(data.get("dihedral_deg",      0.0),  0.0, 15.0)),
+        "flap_gap_pct":     float(np.clip(data.get("flap_gap_pct",      1.5),  0.0,  4.0)),
+        "flap_overlap_pct": float(np.clip(data.get("flap_overlap_pct",  0.5),  0.0,  2.0)),
+        "ride_height_pct":  float(np.clip(data.get("ride_height_pct",   8.0),  1.0, 80.0)),
+        "velocity_ms":      data.get("velocity_ms"),
+        "rho":              data.get("rho"),
+        "chord_m":          data.get("chord_m"),
+    }
+
+    try:
+        from analysis.vortex_lattice import analyze_3d as _vlm
+        result = _vlm({**params, **ext_params})
+        return jsonify({
+            "params":    {**params, **{k: v for k, v in ext_params.items() if v is not None}},
+            "analysis":  result,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _err(str(e), 500)
+
+
+# ── Upload management ─────────────────────────────────────────────────────────
+
+import uuid
+import time as _time
+
+UPLOAD_DIR = Path(__file__).parent / "results" / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+_ALLOWED_EXTENSIONS = {".dat", ".txt", ".csv", ".json", ".stl", ".obj"}
+_MAX_FILE_SIZE_MB   = 50
+
+
+@app.route("/upload/geometry", methods=["POST"])
+def upload_geometry():
+    """
+    Upload a wing/airfoil geometry file.
+
+    Accepts multipart/form-data with field name "file".
+    Supported: .dat, .csv, .txt (Selig/Lednicer), .json (WingOpt params),
+               .stl (binary or ASCII mesh), .obj (Wavefront mesh).
+
+    Returns:
+      upload_id   — use as reference in subsequent API calls
+      params      — extracted WingOpt-compatible parameters (ready for /design/evaluate)
+      airfoil     — normalised 2D coordinates for geometry preview
+      sections    — cross-sections extracted from 3D mesh (if applicable)
+      warnings    — any parse warnings
+    """
+    if "file" not in request.files:
+        return _err("No file field in request (expected multipart field name 'file')")
+
+    f = request.files["file"]
+    filename = f.filename or "upload"
+
+    ext = Path(filename).suffix.lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        return _err(
+            f"File extension '{ext}' not supported. "
+            f"Allowed: {sorted(_ALLOWED_EXTENSIONS)}"
+        )
+
+    content = f.read()
+    if len(content) > _MAX_FILE_SIZE_MB * 1024 * 1024:
+        return _err(f"File too large (max {_MAX_FILE_SIZE_MB} MB)")
+
+    try:
+        from geometry.geometry_parser import GeometryParser
+        parser = GeometryParser()
+        parsed = parser.parse(filename, content)
+    except Exception as e:
+        traceback.print_exc()
+        return _err(f"Parse error: {e}", 500)
+
+    # Persist upload record
+    upload_id  = str(uuid.uuid4())[:8]
+    record = {
+        "upload_id":  upload_id,
+        "filename":   filename,
+        "format":     parsed.fmt,
+        "uploaded_at": _time.time(),
+        "n_points":   parsed.n_points,
+        "has_3d":     parsed.has_3d,
+        "warnings":   parsed.warnings,
+        "params":     parsed.params,
+    }
+    record_path = UPLOAD_DIR / f"{upload_id}.json"
+    import json as _json
+    record_path.write_text(_json.dumps(record, indent=2))
+
+    out = parsed.to_dict()
+    out["upload_id"] = upload_id
+    return jsonify(out)
+
+
+@app.route("/upload/list", methods=["GET"])
+def upload_list():
+    """List all uploaded designs (most recent first)."""
+    records = []
+    for p in sorted(UPLOAD_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True):
+        try:
+            import json as _json
+            records.append(_json.loads(p.read_text()))
+        except Exception:
+            pass
+    return jsonify({"uploads": records, "count": len(records)})
+
+
+@app.route("/upload/<upload_id>", methods=["GET"])
+def upload_get(upload_id: str):
+    """Retrieve a specific upload record by its ID."""
+    path = UPLOAD_DIR / f"{upload_id}.json"
+    if not path.exists():
+        return _err(f"Upload '{upload_id}' not found", 404)
+    import json as _json
+    return jsonify(_json.loads(path.read_text()))
+
+
+@app.route("/upload/<upload_id>", methods=["DELETE"])
+def upload_delete(upload_id: str):
+    """Delete an upload record."""
+    path = UPLOAD_DIR / f"{upload_id}.json"
+    if not path.exists():
+        return _err(f"Upload '{upload_id}' not found", 404)
+    path.unlink()
+    return jsonify({"deleted": upload_id})
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)

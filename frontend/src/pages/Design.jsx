@@ -1,7 +1,8 @@
 // src/pages/Design.jsx
 import React, { useState, useEffect, useRef } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts'
-import { Play, Zap, RotateCcw, TrendingDown, Layers, Wind, Settings2 } from 'lucide-react'
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts'
+import { Play, Zap, RotateCcw, TrendingDown, Layers, Wind, Settings2, Box, Upload } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import {
   AccordionGroup, ParamSlider, MetricCard, WingCanvas,
@@ -59,6 +60,42 @@ const GEOMETRY_PARAMS = [
   },
 ]
 
+const PLANFORM_3D_PARAMS = [
+  {
+    name: 'taper_ratio', label: 'Taper Ratio', min: 0.3, max: 1.0, step: 0.05, unit: '',
+    description: 'Tip chord / root chord. 1 = rectangular, <1 = tapered tip.',
+    tooltip: 'Taper ratio controls how the chord length changes from root to tip. Tapered wings reduce structural weight and improve spanwise lift distribution.',
+  },
+  {
+    name: 'sweep_deg', label: 'Quarter-Chord Sweep', min: 0, max: 30, step: 1, unit: '°',
+    description: 'Rearward sweep of the c/4 line. Increases at high speed.',
+    tooltip: 'Sweep angle of the quarter-chord line. Swept wings reduce shock effects at transonic speeds and shift the aerodynamic centre rearward.',
+  },
+  {
+    name: 'twist_deg', label: 'Washout Twist', min: 0, max: 8, step: 0.5, unit: '°',
+    description: 'Tip AoA relative to root. Prevents tip stall.',
+    tooltip: 'Geometric washout: the tip is twisted to a lower angle of attack than the root. This distributes lift more evenly and delays tip stall.',
+  },
+  {
+    name: 'ride_height_pct', label: 'Ride Height', min: 2, max: 50, step: 1, unit: '%c',
+    description: 'Wing height above ground / chord. Small = strong ground effect.',
+    tooltip: 'Ground effect dramatically increases downforce when the wing is close to the track. F1 front wings run at ~5–12% chord height above the road surface.',
+  },
+  {
+    name: 'flap_gap_pct', label: 'Flap Gap', min: 0.5, max: 4.0, step: 0.1, unit: '%c',
+    description: 'Slot between main element and flap. Controls cascade interference.',
+    tooltip: 'The gap between the mainplane trailing edge and flap leading edge controls boundary layer re-energisation. Optimal gap is typically 1–2% chord.',
+  },
+]
+
+const BASELINE_3D = {
+  taper_ratio: 1.0,
+  sweep_deg:   0.0,
+  twist_deg:   0.0,
+  ride_height_pct: 8.0,
+  flap_gap_pct:    1.5,
+}
+
 const BASELINE = {
   camber_pct: 4, camber_pos_pct: 40, thickness_pct: 12,
   aoa_deg: -5, flap_angle_deg: 10, flap_chord_pct: 25,
@@ -75,20 +112,35 @@ const METRIC_TOOLTIPS = {
 }
 
 export default function DesignPage() {
+  const navigate = useNavigate()
   const [params, setParams]         = useState(BASELINE)
+  const [params3d, setParams3d]     = useState(BASELINE_3D)
   const [geometry, setGeometry]     = useState(null)
   const [metrics, setMetrics]       = useState(null)
   const [mlPred, setMlPred]         = useState(null)
   const [uncertainPred, setUncPred] = useState(null)
   const [constraints, setConstraints] = useState(null)
   const [sweep, setSweep]           = useState(null)
-  const [loading, setLoading]       = useState({ geo: false, phys: false, ml: false, sweep: false, unc: false })
+  const [result3d, setResult3d]     = useState(null)
+  const [loading, setLoading]       = useState({ geo: false, phys: false, ml: false, sweep: false, unc: false, vlm: false })
   const [error, setError]           = useState('')
   const [baseline, setBaseline]     = useState(null)
   const geoTimer = useRef(null)
 
   useEffect(() => {
     api.baseline().then(b => setBaseline(b.metrics)).catch(() => {})
+    // Load params injected from Upload page
+    const loaded = sessionStorage.getItem('wopt_loaded_params')
+    if (loaded) {
+      try {
+        const p = JSON.parse(loaded)
+        const base = Object.fromEntries(Object.keys(BASELINE).map(k => [k, p[k] ?? BASELINE[k]]))
+        setParams(base)
+        fetchGeometry(base)
+        sessionStorage.removeItem('wopt_loaded_params')
+        return
+      } catch {}
+    }
     fetchGeometry(BASELINE)
   }, [])
 
@@ -142,10 +194,23 @@ export default function DesignPage() {
     setLoad('sweep', false)
   }
 
+  const handleParam3d = (name, val) => setParams3d(p => ({ ...p, [name]: val }))
+
+  const run3D = async () => {
+    setLoad('vlm', true); setError('')
+    try {
+      const res = await api.analyze3d({ ...params, ...params3d })
+      setResult3d(res)
+    } catch (e) { setError(e.message) }
+    setLoad('vlm', false)
+  }
+
   const reset = () => {
     setParams(BASELINE)
+    setParams3d(BASELINE_3D)
     fetchGeometry(BASELINE)
-    setMetrics(null); setMlPred(null); setUncPred(null); setSweep(null); setConstraints(null); setError('')
+    setMetrics(null); setMlPred(null); setUncPred(null); setSweep(null)
+    setConstraints(null); setResult3d(null); setError('')
   }
 
   const m  = metrics?.metrics
@@ -227,11 +292,29 @@ export default function DesignPage() {
             ))}
           </AccordionGroup>
 
+          <AccordionGroup
+            title="3D Planform"
+            icon={Box}
+            defaultOpen={false}
+            summary={`${params3d.taper_ratio.toFixed(2)} taper · ${params3d.sweep_deg}° sweep · h=${params3d.ride_height_pct}%`}
+            tooltip="3D planform parameters used by the Vortex Lattice Method solver. These define the real 3D wing shape beyond the 2D cross-section."
+          >
+            {PLANFORM_3D_PARAMS.map(cfg => (
+              <ParamSlider key={cfg.name} {...cfg} value={params3d[cfg.name]} onChange={handleParam3d} />
+            ))}
+          </AccordionGroup>
+
           {/* Action buttons */}
           <div className="flex flex-col gap-2 mt-1">
             <button onClick={runPhysics} disabled={loading.phys} className="btn-primary w-full justify-center">
               <Play size={13} />
               {loading.phys ? 'Solving…' : 'L0 Physics Eval'}
+            </button>
+            <button onClick={run3D} disabled={loading.vlm} className="btn-primary w-full justify-center"
+              style={{ background: 'linear-gradient(135deg, #39ff88 0%, #00e5cc 100%)', color: '#06080f' }}
+            >
+              <Box size={13} />
+              {loading.vlm ? 'Running VLM…' : 'Run 3D VLM Analysis'}
             </button>
             <button onClick={runML} disabled={loading.ml} className="btn-secondary w-full justify-center">
               <Zap size={13} />
@@ -245,12 +328,21 @@ export default function DesignPage() {
               <TrendingDown size={12} />
               {loading.sweep ? 'Sweeping angles…' : 'AoA Polar Sweep'}
             </button>
+            <button
+              onClick={() => navigate('/upload')}
+              className="btn-ghost w-full justify-center"
+              style={{ fontSize: '0.78rem', borderColor: 'rgba(0,200,255,0.15)' }}
+            >
+              <Upload size={12} />
+              Import your design
+            </button>
           </div>
 
           {/* Button explainer */}
           <div className="card p-4 flex flex-col gap-3">
             {[
-              { dot: 'var(--arc)',      label: 'L0 Physics Eval',       desc: 'Conceptual screening via panel/BL solver' },
+              { dot: 'var(--arc)',      label: 'L0 Physics Eval',       desc: 'Panel/BL solver — 2D + Prandtl lifting-line' },
+              { dot: 'var(--phosphor)', label: 'Run 3D VLM Analysis',   desc: 'Vortex Lattice: taper, sweep, ground effect' },
               { dot: 'var(--teal)',     label: 'ML Quick Predict',       desc: 'Ensemble surrogate — <1ms, no CFD' },
               { dot: 'var(--ember)',    label: 'Predict + Uncertainty',  desc: 'Surrogate + GP confidence bands' },
               { dot: '#3e4257',         label: 'AoA Polar Sweep',        desc: 'Sweep all angles at once' },
@@ -579,6 +671,206 @@ export default function DesignPage() {
           )}
         </div>
       </div>
+
+      {/* ── 3D VLM Results ─────────────────────────────────────────────────── */}
+      {result3d && <VLMResultPanel result={result3d} params3d={params3d} />}
     </div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VLMResultPanel — full 3D analysis output
+// ─────────────────────────────────────────────────────────────────────────────
+function VLMResultPanel({ result, params3d }) {
+  const a = result?.analysis
+  if (!a) return null
+
+  const span = a.spanwise || {}
+  const etaArr = span.eta || []
+  const clArr  = span.cl_strip || []
+  const cdiArr = span.cdi_strip || []
+
+  const spanData = etaArr.map((eta, i) => ({
+    eta: eta.toFixed(2),
+    cl:  parseFloat((clArr[i] || 0).toFixed(4)),
+    cdi: parseFloat((cdiArr[i] || 0).toFixed(5)),
+  }))
+
+  const pr = a.pressure || {}
+  const cpArr = pr.cp || []
+  const yArr  = pr.panel_y || []
+  const cpData = yArr.map((y, i) => ({
+    y:  parseFloat(y.toFixed(3)),
+    cp: parseFloat((cpArr[i] || 0).toFixed(4)),
+  })).sort((a, b) => a.y - b.y)
+
+  return (
+    <div className="card card-glow-green animate-slide-up mt-5 p-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-5">
+        <div style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: 'rgba(57,255,136,0.08)',
+          border: '1px solid rgba(57,255,136,0.20)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Box size={15} style={{ color: 'var(--phosphor)' }} />
+        </div>
+        <div>
+          <h3 style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: '0.95rem', color: '#fff', margin: 0 }}>
+            3D Vortex Lattice Analysis
+          </h3>
+          <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.62rem', color: '#636880' }}>
+            {a.n_panels} panels · taper {params3d.taper_ratio} · sweep {params3d.sweep_deg}° · h={params3d.ride_height_pct}%c
+          </span>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className={`badge ${a.converged ? 'badge-green' : 'badge-red'}`}>
+            {a.converged ? 'CONVERGED' : 'FAILED'}
+          </span>
+          {a.ground_effect_factor > 1.05 && (
+            <span className="badge badge-amber" style={{ fontSize: '0.62rem' }}>
+              GROUND EFFECT ×{a.ground_effect_factor.toFixed(3)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5 stagger">
+        {[
+          { label: 'CL (3D)',        value: a.CL?.toFixed(4),              color: 'green' },
+          { label: 'CD induced',     value: a.CD_induced?.toFixed(5),      color: 'amber' },
+          { label: 'Downforce',      value: `${a.downforce_N?.toFixed(0)} N`, color: 'blue' },
+          { label: 'Drag',           value: `${a.drag_N?.toFixed(1)} N`,    color: 'amber' },
+          { label: 'Efficiency',     value: a.efficiency?.toFixed(2),       color: 'green' },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="metric-card">
+            <div className="metric-label">{label}</div>
+            <div style={{
+              fontFamily: 'JetBrains Mono,monospace', fontWeight: 700, fontSize: '1rem',
+              color: color === 'green' ? 'var(--phosphor)'
+                   : color === 'amber' ? 'var(--ember)'
+                   : 'var(--arc)',
+            }}>
+              {value ?? '—'}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        {/* Spanwise Cl distribution */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="label">Spanwise Cl distribution</span>
+            <InfoTooltip
+              text="Local section lift coefficient (Cl) as it varies from wing root (η=−1) to tip (η=+1). Elliptical distribution minimises induced drag. Taper and twist shape this curve."
+              wide
+            />
+          </div>
+          {spanData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={160}>
+              <AreaChart data={spanData} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
+                <defs>
+                  <linearGradient id="clGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#39ff88" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#39ff88" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="2 4" />
+                <XAxis dataKey="eta" tickFormatter={v => `η${v}`} tick={{ fontSize: 9 }} />
+                <YAxis tick={{ fontSize: 9 }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area dataKey="cl" stroke="var(--phosphor)" strokeWidth={2}
+                  fill="url(#clGrad)" dot={false} name="Cl strip" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.7rem', color: '#3e4257' }}>
+                No spanwise data
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Spanwise Cdi + ground effect info */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="label">Induced drag distribution</span>
+            <InfoTooltip
+              text="Local induced drag coefficient at each spanwise strip. Tip vortices cause drag to peak near the tips — endplates suppress this."
+              wide
+            />
+          </div>
+          {spanData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={160}>
+              <AreaChart data={spanData} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
+                <defs>
+                  <linearGradient id="cdiGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#ffb020" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#ffb020" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="2 4" />
+                <XAxis dataKey="eta" tickFormatter={v => `η${v}`} tick={{ fontSize: 9 }} />
+                <YAxis tick={{ fontSize: 9 }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area dataKey="cdi" stroke="var(--ember)" strokeWidth={2}
+                  fill="url(#cdiGrad)" dot={false} name="Cdi strip" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.7rem', color: '#3e4257' }}>
+                No data
+              </span>
+            </div>
+          )}
+
+          {/* Ground effect callout */}
+          {a.ground_effect_factor !== undefined && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px', borderRadius: 10,
+              background: a.ground_effect_factor > 1.05
+                ? 'rgba(57,255,136,0.05)' : 'rgba(255,255,255,0.03)',
+              border: a.ground_effect_factor > 1.05
+                ? '1px solid rgba(57,255,136,0.18)' : '1px solid rgba(255,255,255,0.07)',
+            }}>
+              <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.65rem', color: '#636880', marginBottom: 3 }}>
+                GROUND EFFECT MULTIPLIER
+              </div>
+              <div style={{
+                fontFamily: 'JetBrains Mono,monospace', fontWeight: 700, fontSize: '1.1rem',
+                color: a.ground_effect_factor > 1.05 ? 'var(--phosphor)' : '#636880',
+              }}>
+                ×{a.ground_effect_factor.toFixed(4)}
+              </div>
+              <div style={{ fontFamily: 'Outfit,sans-serif', fontSize: '0.72rem', color: '#a8b2c8', marginTop: 3 }}>
+                {a.ground_effect_factor > 1.10
+                  ? `Wing produces ${((a.ground_effect_factor - 1) * 100).toFixed(1)}% more downforce due to ground proximity`
+                  : a.ground_effect_factor > 1.02
+                  ? 'Mild ground effect active — lower ride height increases this'
+                  : 'Minimal ground effect at current ride height'}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Condition number warning */}
+      {a.condition_number > 1e6 && (
+        <div style={{
+          marginTop: 12, padding: '8px 14px', borderRadius: 8,
+          background: 'rgba(255,61,90,0.05)', border: '1px solid rgba(255,61,90,0.15)',
+          fontFamily: 'Outfit,sans-serif', fontSize: '0.75rem', color: '#d4506a',
+        }}>
+          ⚠ AIC matrix condition number {a.condition_number.toExponential(2)} — results may be less accurate for this geometry combination.
+        </div>
+      )}
+    </div>
+  )
+}
+

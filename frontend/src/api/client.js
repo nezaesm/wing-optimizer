@@ -42,4 +42,12 @@ export const api = {
   checkConstraints:  (body)         => request('POST', '/constraints/check', body),
   cfdStatus:         (runId)        => request('GET',  `/cfd/status/${runId}`),
   cfdArtifacts:      (limit=20)     => request('GET',  `/cfd/artifacts?limit=${limit}`),
+
+  // 3D VLM analysis
+  analyze3d: (body) => request('POST', '/design/analyze-3d', body),
+
+  // Upload management
+  uploadList:   ()   => request('GET',    '/upload/list'),
+  uploadGet:    (id) => request('GET',    `/upload/${id}`),
+  uploadDelete: (id) => request('DELETE', `/upload/${id}`),
 }

@@ -1,7 +1,7 @@
 # CLAUDE.md — WingOpt Project
 
 > Auto-maintained by Claude. Updated whenever project changes are made.
-> Last updated: 2026-03-26
+> Last updated: 2026-03-26 (v6)
 
 ---
 
@@ -291,6 +291,44 @@ Trust labels: `high` (dist < 1.2σ), `moderate` (< 2σ), `low` (< 3σ), `extrapo
 ---
 
 ## Changelog
+
+### 2026-03-26 (v6 — 3D VLM + File Upload)
+- **`backend/analysis/vortex_lattice.py`** (NEW): Full Vortex Lattice Method physics engine
+  - Horseshoe vortex panels with cosine chordwise + spanwise spacing
+  - Taper, quarter-chord sweep, twist (washout), dihedral
+  - Multi-element: mainplane + trailing flap with configurable gap/overlap
+  - Ground effect via method of images (Wieselberger-Pistolesi amplification)
+  - Spanwise Cl/Cdi distributions, per-panel Cp
+  - Endplate effective-AR + Oswald efficiency correction
+  - `analyze_3d(params)` convenience function for Flask API
+- **`backend/geometry/geometry_parser.py`** (NEW): Geometry file parser
+  - `.dat` / `.txt` / `.csv` — Selig and Lednicer airfoil coordinate formats
+  - `.json` — WingOpt flat parameter dict
+  - `.stl` — binary and ASCII surface mesh, cross-section extraction
+  - `.obj` — Wavefront OBJ mesh, cross-section extraction
+  - NACA parameter fitting from parsed coordinates (camber, thickness)
+- **`backend/main.py`**: New routes
+  - `POST /design/analyze-3d` — 3D VLM analysis (taper, sweep, twist, ground effect)
+  - `POST /upload/geometry` — multipart file upload + parse
+  - `GET  /upload/list` — list uploads
+  - `GET  /upload/<id>` — get specific upload
+  - `DELETE /upload/<id>` — delete upload
+  - Upload files stored in `backend/results/uploads/`
+- **`frontend/src/pages/Upload.jsx`** (NEW): File upload page
+  - Drag-and-drop zone + file browser
+  - Supported format reference (collapsible)
+  - Geometry preview (SVG airfoil cross-section)
+  - Extracted parameter display + "Load into Design" button
+  - Upload history with expand/delete
+- **`frontend/src/App.jsx`**: Added Upload nav item (between Dataset and About)
+- **`frontend/src/pages/Design.jsx`**: 3D analysis integration
+  - New `PLANFORM_3D_PARAMS`: taper_ratio, sweep_deg, twist_deg, ride_height_pct, flap_gap_pct
+  - New "3D Planform" accordion section in parameter panel
+  - "Run 3D VLM Analysis" button (green gradient)
+  - "Import your design" button linking to /upload
+  - `VLMResultPanel` component: 5 KPI cards + spanwise Cl chart + induced drag chart + ground effect callout
+  - sessionStorage-based param injection from Upload page ("Load into Design" flow)
+- **`frontend/src/api/client.js`**: Added `analyze3d`, `uploadList`, `uploadGet`, `uploadDelete`
 
 ### 2026-03-26 (v5 — Mobile responsiveness)
 - **App.jsx**: Fixed bottom tab bar on mobile with step badges + active indicator; slide-in hamburger drawer with full nav + API status; desktop nav unchanged; `env(safe-area-inset-*)` for notched phones
