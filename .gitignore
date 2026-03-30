@@ -35,5 +35,9 @@ desktop.ini
 *.log
 npm-debug.log*
 
+# Claude Code — config and context files
+.claude.json
+CLAUDE.md
+
 # Vercel
 .vercel/
