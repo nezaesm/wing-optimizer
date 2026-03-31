@@ -318,8 +318,8 @@ def validate():
         from validation.validator import run_validation
         result = run_validation(n_top=n_top, verbose=False)
         return jsonify(result)
-    except FileNotFoundError as e:
-        return _err(str(e), 404)
+    except FileNotFoundError:
+        return _err("No validation results available. Run optimization first.", 404)
 
 
 @app.route("/validate/results", methods=["GET"])
@@ -340,11 +340,15 @@ def sensitivity():
     if param not in PARAM_NAMES:
         return _err("Unknown parameter name", 400)
 
-    # Base params from query string (fallback to baseline)
+    # Base params from query string — clamp to valid bounds to prevent OOB inputs
     base = {}
     for name in PARAM_NAMES:
-        key = f"base_{name}"
-        base[name] = float(request.args.get(key, BASELINE_PARAMS[name]))
+        lo_b, hi_b, _, _ = PARAM_BOUNDS[name]
+        try:
+            val = float(request.args.get(f"base_{name}", BASELINE_PARAMS[name]))
+            base[name] = float(np.clip(val, lo_b, hi_b))
+        except (ValueError, TypeError):
+            base[name] = BASELINE_PARAMS[name]
 
     lo, hi, desc, unit = PARAM_BOUNDS[param]
     values = np.linspace(lo, hi, n_points).tolist()
@@ -560,9 +564,15 @@ def cfd_artifacts():
     try:
         from cfd.artifact_store import ArtifactStore
         store   = ArtifactStore()
+        fidelity_int = None
+        if fidelity is not None and fidelity.isdigit():
+            fv = int(fidelity)
+            if fv not in (0, 1, 2):
+                return _err("fidelity must be 0, 1, or 2", 400)
+            fidelity_int = fv
         records = store.list_records(
             limit    = limit,
-            fidelity = int(fidelity) if fidelity is not None and fidelity.isdigit() else None,
+            fidelity = fidelity_int,
         )
         return jsonify({"records": records, "summary": store.summary()})
     except Exception:
