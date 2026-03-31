@@ -1,7 +1,9 @@
 // src/api/client.js
-// All backend calls go through here. Set VITE_API_URL in Vercel dashboard.
+// All backend calls go through here.
+// VITE_API_URL env var overrides the default (set in Vercel dashboard).
+// Fallback is the Railway backend so production works even without the var.
 
-const BASE = import.meta.env.VITE_API_URL || '/api'
+const BASE = (import.meta.env.VITE_API_URL || 'https://wing-optimizer-production.up.railway.app').replace(/\/$/, '')
 
 async function request(method, path, body) {
   const opts = {
