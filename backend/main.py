@@ -39,12 +39,23 @@ Run:
 """
 
 import json
+import logging
+import os
 import traceback
+import uuid
+import time as _time
 import numpy as np
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Load .env file in development (no-op if python-dotenv is not installed)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
 
 from flask import Flask, request, jsonify
 
@@ -55,16 +66,35 @@ from analysis.aero_metrics import evaluate_design, compare_to_baseline
 from geometry.naca_generator import generate_naca4, apply_flap
 from models.predict import predict_all, get_model_metrics, get_shap_importance
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
 
-# ── CORS helper ───────────────────────────────────────────────────────────────
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Set ALLOWED_ORIGINS env var (comma-separated) to override defaults.
+_ALLOWED_ORIGINS: set = set(filter(None, os.environ.get(
+    "ALLOWED_ORIGINS",
+    "https://frontend-five-beige-e9u7r18z93.vercel.app,"
+    "http://localhost:5173,"
+    "http://localhost:5174,"
+    "http://localhost:5175,"
+    "http://127.0.0.1:5173,"
+    "http://127.0.0.1:5174"
+).split(",")))
+
+
 @app.after_request
 def _cors(response):
-    response.headers["Access-Control-Allow-Origin"]  = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "*"
+    origin = request.headers.get("Origin", "")
+    if origin in _ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
     return response
+
 
 @app.route("/", methods=["OPTIONS"])
 @app.route("/<path:_>", methods=["OPTIONS"])
@@ -86,6 +116,39 @@ def _parse_params(data: dict) -> dict:
 
 def _err(msg, code=400):
     return jsonify({"error": msg}), code
+
+
+def _int_bounded(source, key, default: int, lo: int, hi: int) -> int:
+    """Parse an integer from source dict/args, clamp to [lo, hi], return default on error."""
+    try:
+        return int(np.clip(int(source.get(key, default)), lo, hi))
+    except (ValueError, TypeError):
+        return default
+
+
+def _float_bounded(source, key, default: float, lo: float, hi: float) -> float:
+    """Parse a float from source dict/args, clamp to [lo, hi], return default on error."""
+    try:
+        return float(np.clip(float(source.get(key, default)), lo, hi))
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_upload_id(upload_id: str) -> str | None:
+    """
+    Validate upload_id: alphanumeric + hyphens only, max 64 chars.
+    Returns sanitized id or None if invalid (prevents path traversal).
+    """
+    if not upload_id or len(upload_id) > 64:
+        return None
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+    if not all(c in allowed for c in upload_id):
+        return None
+    # Ensure resolved path stays within UPLOAD_DIR
+    candidate = (UPLOAD_DIR / f"{upload_id}.json").resolve()
+    if not str(candidate).startswith(str(UPLOAD_DIR.resolve())):
+        return None
+    return upload_id
 
 
 # ── System ────────────────────────────────────────────────────────────────────
@@ -167,11 +230,11 @@ def evaluate():
 
 @app.route("/design/sweep", methods=["POST"])
 def polar_sweep():
-    data     = request.get_json() or {}
-    p        = _parse_params(data.get("params", data))
-    aoa_start = float(data.get("aoa_start", -18.0))
-    aoa_end   = float(data.get("aoa_end",   -2.0))
-    n_points  = int(data.get("n_points",    17))
+    data      = request.get_json() or {}
+    p         = _parse_params(data.get("params", data))
+    aoa_start = _float_bounded(data, "aoa_start", -18.0, -90.0, 90.0)
+    aoa_end   = _float_bounded(data, "aoa_end",    -2.0, -90.0, 90.0)
+    n_points  = _int_bounded(data, "n_points", 17, 2, 200)
     sweep = []
     for aoa in np.linspace(aoa_start, aoa_end, n_points):
         r = evaluate_design({**p, "aoa_deg": float(aoa)})
@@ -194,8 +257,8 @@ def predict():
     try:
         result = predict_all(p)
         return jsonify(result)
-    except FileNotFoundError as e:
-        return _err(f"Models not trained yet: {e}", 503)
+    except FileNotFoundError:
+        return _err("Models not trained yet. Run training first.", 503)
 
 
 @app.route("/models/metrics", methods=["GET"])
@@ -212,8 +275,8 @@ def model_metrics():
 @app.route("/optimize", methods=["POST"])
 def optimize():
     data     = request.get_json() or {}
-    pop_size = int(data.get("pop_size", 60))
-    n_gen    = int(data.get("n_gen",    50))
+    pop_size = _int_bounded(data, "pop_size", 60, 10, 300)
+    n_gen    = _int_bounded(data, "n_gen",    50,  5, 200)
     try:
         from optimization.nsga2_runner import run_nsga2
         result = run_nsga2(pop_size=pop_size, n_gen=n_gen, verbose=False)
@@ -232,8 +295,8 @@ def optimize():
             "elapsed_s":     result["elapsed_s"],
         })
     except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+        logger.exception("Optimization error")
+        return _err("Optimization failed. Check server logs.", 500)
 
 
 @app.route("/optimize/results", methods=["GET"])
@@ -249,7 +312,7 @@ def get_optimize_results():
 
 @app.route("/validate", methods=["POST"])
 def validate():
-    n_top = int(request.args.get("n_top", 10))
+    n_top = _int_bounded(request.args, "n_top", 10, 1, 50)
     try:
         from validation.validator import run_validation
         result = run_validation(n_top=n_top, verbose=False)
@@ -272,9 +335,9 @@ def get_validation_results():
 @app.route("/sensitivity", methods=["GET"])
 def sensitivity():
     param    = request.args.get("param", "aoa_deg")
-    n_points = int(request.args.get("n_points", 20))
+    n_points = _int_bounded(request.args, "n_points", 20, 2, 100)
     if param not in PARAM_NAMES:
-        return _err(f"Unknown param '{param}'. Valid: {PARAM_NAMES}")
+        return _err("Unknown parameter name", 400)
 
     # Base params from query string (fallback to baseline)
     base = {}
@@ -297,7 +360,7 @@ def sensitivity():
 
 @app.route("/sensitivity/all", methods=["GET"])
 def sensitivity_all():
-    n_points = int(request.args.get("n_points", 15))
+    n_points = _int_bounded(request.args, "n_points", 15, 2, 50)
     results  = {}
     for param in PARAM_NAMES:
         lo, hi, desc, unit = PARAM_BOUNDS[param]
@@ -341,7 +404,7 @@ def fidelity_evaluate():
     """Run evaluation at a specified fidelity level (0, 1, or 2)."""
     data      = request.get_json() or {}
     params    = _parse_params(data.get("params", data))
-    level     = int(data.get("level", 0))
+    level     = _int_bounded(data, "level", 0, 0, 2)
     condition = data.get("condition") or {}
     try:
         from fidelity import get_evaluator
@@ -353,9 +416,9 @@ def fidelity_evaluate():
         except Exception:
             result_dict = result if isinstance(result, dict) else {}
         return jsonify(result_dict)
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("Fidelity evaluation error")
+        return _err("Evaluation failed. Check server logs.", 500)
 
 
 @app.route("/fidelity/multi-condition", methods=["POST"])
@@ -364,7 +427,7 @@ def multi_condition_evaluate():
     data           = request.get_json() or {}
     params         = _parse_params(data.get("params", data))
     condition_set  = data.get("condition_set", "race_conditions")
-    level          = int(data.get("level", 0))
+    level          = _int_bounded(data, "level", 0, 0, 2)
     try:
         from fidelity import get_evaluator
         from conditions.condition_set import get_condition_set
@@ -379,9 +442,9 @@ def multi_condition_evaluate():
         except Exception:
             result_dict = result if isinstance(result, dict) else {}
         return jsonify(result_dict)
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("Multi-condition evaluation error")
+        return _err("Multi-condition evaluation failed. Check server logs.", 500)
 
 
 @app.route("/fidelity/validate-geometry", methods=["POST"])
@@ -400,9 +463,9 @@ def validate_geometry():
             "errors":      report.errors,
             "warnings":    report.warnings,
         })
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("Geometry validation error")
+        return _err("Geometry validation failed. Check server logs.", 500)
 
 
 # ── Uncertainty-aware prediction ──────────────────────────────────────────────
@@ -416,9 +479,9 @@ def predict_uncertain():
         from models.surrogate import predict_uncertain as _pu
         sr = _pu(params)
         return jsonify(sr.to_dict())
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("Uncertainty prediction error")
+        return _err("Prediction failed. Check server logs.", 500)
 
 
 # ── Hybrid optimization ───────────────────────────────────────────────────────
@@ -427,28 +490,27 @@ def predict_uncertain():
 def optimize_hybrid():
     """Run the 7-stage hybrid multi-fidelity optimization pipeline."""
     data      = request.get_json() or {}
-    n_init    = int(data.get("n_init", 100))
-    n_pareto  = int(data.get("n_pareto", 20))
+    n_init    = _int_bounded(data, "n_init",   100, 10, 500)
+    n_pareto  = _int_bounded(data, "n_pareto",  20,  5, 100)
     enable_l2 = bool(data.get("enable_l2", False))
     try:
         from optimization.hybrid_pipeline import HybridPipeline
         pipeline = HybridPipeline(
-            l0_top_k        = int(data.get("l0_top_k", 30)),
-            surrogate_top_k = int(data.get("surrogate_top_k", 10)),
-            l1_top_k        = int(data.get("l1_top_k", 5)),
+            l0_top_k        = _int_bounded(data, "l0_top_k",        30,  5, 100),
+            surrogate_top_k = _int_bounded(data, "surrogate_top_k", 10,  2,  50),
+            l1_top_k        = _int_bounded(data, "l1_top_k",         5,  1,  20),
             enable_l2       = enable_l2,
         )
         result = pipeline.run(n_init=n_init, n_pareto=n_pareto)
         out    = result.to_dict()
-        # Also save to results dir for caching
         out_path = RESULTS_DIR / "hybrid_results.json"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         import json as _json
         out_path.write_text(_json.dumps(out, indent=2, default=str))
         return jsonify(out)
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("Hybrid optimization error")
+        return _err("Hybrid optimization failed. Check server logs.", 500)
 
 
 # ── Constraints ───────────────────────────────────────────────────────────────
@@ -464,9 +526,9 @@ def check_constraints():
         engine  = ConstraintEngine()
         summary = engine.evaluate(params, metrics)
         return jsonify(summary.to_dict())
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("Constraint check error")
+        return _err("Constraint check failed. Check server logs.", 500)
 
 
 # ── CFD status / artifacts ────────────────────────────────────────────────────
@@ -474,32 +536,37 @@ def check_constraints():
 @app.route("/cfd/status/<run_id>", methods=["GET"])
 def cfd_status(run_id: str):
     """Get status of a running or completed CFD job."""
+    # Validate run_id to prevent path traversal
+    if not run_id or not all(c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id) or len(run_id) > 64:
+        return _err("Invalid run_id", 400)
     try:
         from cfd.artifact_store import ArtifactStore
         store  = ArtifactStore()
         record = store.get_record(run_id)
         if record is None:
-            return _err(f"run_id '{run_id}' not found", 404)
+            return _err("run_id not found", 404)
         return jsonify(record.to_dict())
-    except Exception as e:
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("CFD status error")
+        return _err("Failed to retrieve CFD status.", 500)
 
 
 @app.route("/cfd/artifacts", methods=["GET"])
 def cfd_artifacts():
     """List recent CFD run records."""
     fidelity = request.args.get("fidelity")
-    limit    = int(request.args.get("limit", 20))
+    limit    = _int_bounded(request.args, "limit", 20, 1, 100)
     try:
         from cfd.artifact_store import ArtifactStore
         store   = ArtifactStore()
         records = store.list_records(
             limit    = limit,
-            fidelity = int(fidelity) if fidelity is not None else None,
+            fidelity = int(fidelity) if fidelity is not None and fidelity.isdigit() else None,
         )
         return jsonify({"records": records, "summary": store.summary()})
-    except Exception as e:
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("CFD artifacts error")
+        return _err("Failed to retrieve CFD artifacts.", 500)
 
 
 # ── 3D VLM Analysis ───────────────────────────────────────────────────────────
@@ -520,7 +587,7 @@ def analyze_3d():
     data = request.get_json() or {}
     params = _parse_params(data)
 
-    # 3D-only params (with safe defaults)
+    # 3D-only params (with safe defaults and bounds)
     ext_params = {
         "taper_ratio":      float(np.clip(data.get("taper_ratio",      1.0),  0.2, 1.0)),
         "sweep_deg":        float(np.clip(data.get("sweep_deg",         0.0),  0.0, 35.0)),
@@ -541,15 +608,12 @@ def analyze_3d():
             "params":    {**params, **{k: v for k, v in ext_params.items() if v is not None}},
             "analysis":  result,
         })
-    except Exception as e:
-        traceback.print_exc()
-        return _err(str(e), 500)
+    except Exception:
+        logger.exception("3D VLM analysis error")
+        return _err("3D analysis failed. Check server logs.", 500)
 
 
 # ── Upload management ─────────────────────────────────────────────────────────
-
-import uuid
-import time as _time
 
 UPLOAD_DIR = Path(__file__).parent / "results" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -580,6 +644,9 @@ def upload_geometry():
     f = request.files["file"]
     filename = f.filename or "upload"
 
+    # Strip path components from filename (prevent directory traversal via filename)
+    filename = Path(filename).name
+
     ext = Path(filename).suffix.lower()
     if ext not in _ALLOWED_EXTENSIONS:
         return _err(
@@ -595,12 +662,12 @@ def upload_geometry():
         from geometry.geometry_parser import GeometryParser
         parser = GeometryParser()
         parsed = parser.parse(filename, content)
-    except Exception as e:
-        traceback.print_exc()
-        return _err(f"Parse error: {e}", 500)
+    except Exception:
+        logger.exception("Geometry parse error for file: %s", filename)
+        return _err("Failed to parse geometry file. Ensure it is a valid supported format.", 422)
 
-    # Persist upload record
-    upload_id  = str(uuid.uuid4())[:8]
+    # Persist upload record with full UUID (no truncation)
+    upload_id  = str(uuid.uuid4())
     record = {
         "upload_id":  upload_id,
         "filename":   filename,
@@ -636,9 +703,12 @@ def upload_list():
 @app.route("/upload/<upload_id>", methods=["GET"])
 def upload_get(upload_id: str):
     """Retrieve a specific upload record by its ID."""
-    path = UPLOAD_DIR / f"{upload_id}.json"
+    safe_id = _safe_upload_id(upload_id)
+    if safe_id is None:
+        return _err("Invalid upload ID", 400)
+    path = UPLOAD_DIR / f"{safe_id}.json"
     if not path.exists():
-        return _err(f"Upload '{upload_id}' not found", 404)
+        return _err("Upload not found", 404)
     import json as _json
     return jsonify(_json.loads(path.read_text()))
 
@@ -646,12 +716,17 @@ def upload_get(upload_id: str):
 @app.route("/upload/<upload_id>", methods=["DELETE"])
 def upload_delete(upload_id: str):
     """Delete an upload record."""
-    path = UPLOAD_DIR / f"{upload_id}.json"
+    safe_id = _safe_upload_id(upload_id)
+    if safe_id is None:
+        return _err("Invalid upload ID", 400)
+    path = UPLOAD_DIR / f"{safe_id}.json"
     if not path.exists():
-        return _err(f"Upload '{upload_id}' not found", 404)
+        return _err("Upload not found", 404)
     path.unlink()
-    return jsonify({"deleted": upload_id})
+    return jsonify({"deleted": safe_id})
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    port  = int(os.environ.get("PORT", 8000))
+    app.run(debug=debug, host="0.0.0.0", port=port)

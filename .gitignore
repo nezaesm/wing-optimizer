@@ -38,6 +38,14 @@ npm-debug.log*
 # Claude Code — config and context files
 .claude.json
 CLAUDE.md
+.claude/
+.remember/
+.superpowers/
+.mcp.json
+reference image/
+inspirations/
+docs/
+
 
 # Vercel
 .vercel/

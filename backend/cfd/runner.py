@@ -75,7 +75,7 @@ class CFDRunner:
         solver_cmd: str,
         timeout_s:  int = 7200,
     ) -> RunStatus:
-        run_id = str(uuid.uuid4())[:8]
+        run_id = str(uuid.uuid4())
         status = RunStatus(run_id=run_id, status="running", case_dir=str(case_dir))
         self._active[run_id] = status
 
@@ -113,7 +113,7 @@ class CFDRunner:
         timeout_s:   int = 7200,
         on_complete: Optional[Callable[[RunStatus], None]] = None,
     ) -> str:
-        run_id = str(uuid.uuid4())[:8]
+        run_id = str(uuid.uuid4())
         status = RunStatus(run_id=run_id, status="running", case_dir=str(case_dir))
         self._active[run_id] = status
 
@@ -141,7 +141,7 @@ class CFDRunner:
         Submit via scheduler (sbatch / qsub / etc.).
         Returns a RunStatus with job_id stored in log_tail.
         """
-        run_id = str(uuid.uuid4())[:8]
+        run_id = str(uuid.uuid4())
         status = RunStatus(run_id=run_id, status="pending", case_dir=str(case_dir))
         try:
             ret = subprocess.run(
@@ -168,14 +168,17 @@ class CFDRunner:
     def poll_hpc_job(
         self,
         job_id:      str,
-        poll_cmd:    str = "squeue -j {job_id} -h -o %T",
         done_states: List[str] = ("COMPLETED",),
         fail_states: List[str] = ("FAILED", "CANCELLED", "TIMEOUT"),
     ) -> str:
-        """Poll scheduler for job state. Returns 'running' | 'done' | 'failed'."""
+        """Poll SLURM scheduler for job state. Returns 'running' | 'done' | 'failed'."""
+        # Validate job_id is a plain integer — prevents command injection
+        job_id_str = str(job_id).strip()
+        if not job_id_str.isdigit():
+            return "unknown"
         try:
             ret = subprocess.run(
-                poll_cmd.format(job_id=job_id).split(),
+                ["squeue", "-j", job_id_str, "-h", "-o", "%T"],
                 capture_output=True, text=True, timeout=10,
             )
             state = ret.stdout.strip().upper()

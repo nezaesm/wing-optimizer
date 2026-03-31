@@ -62,7 +62,7 @@ export default function ValidatePage() {
       </BeginnerTip>
 
       <div className="flex items-center gap-4 mt-4 mb-4">
-        <button onClick={runValidation} disabled={running} className="btn-primary">
+        <button onClick={runValidation} disabled={running} className="btn-primary" data-magnetic>
           {running ? <Spinner size={14} /> : <ShieldCheck size={14} />}
           {running ? 'Running L0 validation…' : 'Re-run L0 Validation'}
         </button>

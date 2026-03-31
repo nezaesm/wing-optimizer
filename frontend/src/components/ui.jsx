@@ -27,7 +27,7 @@ export function BeginnerTip({ children, icon = '💡' }) {
   return (
     <div className="tip-box flex gap-3">
       <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
-      <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', color: '#a8b2c8', lineHeight: 1.65 }}>
+      <p style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.82rem', color: '#a8b2c8', lineHeight: 1.65 }}>
         {children}
       </p>
     </div>
@@ -45,11 +45,11 @@ export function MetricCard({ label, value, unit = '', delta, color = 'blue', sma
     white: '#ffffff',
   }
   const glowColors = {
-    blue:  'rgba(0,200,255,0.12)',
+    blue:  'rgba(139,92,246,0.14)',
     green: 'rgba(57,255,136,0.12)',
     amber: 'rgba(255,176,32,0.12)',
     red:   'rgba(255,61,90,0.12)',
-    cyan:  'rgba(0,229,204,0.12)',
+    cyan:  'rgba(192,132,252,0.12)',
     white: 'transparent',
   }
   const c = colorVars[color] || colorVars.blue
@@ -171,7 +171,7 @@ export function ParamSlider({ label, name, min, max, step = 0.1, value, unit, on
     <div className="flex flex-col gap-2">
       <div className="flex justify-between items-center">
         <div className="flex items-center">
-          <label style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', color: '#a8b2c8', fontWeight: 500 }}>
+          <label style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.82rem', color: '#a8b2c8', fontWeight: 500 }}>
             {label}
           </label>
           {tooltip && <InfoTooltip text={tooltip} wide />}
@@ -190,7 +190,7 @@ export function ParamSlider({ label, name, min, max, step = 0.1, value, unit, on
           onChange={e => onChange(name, parseFloat(e.target.value))}
           className="slider-track w-full"
           style={{
-            background: `linear-gradient(to right, var(--arc) ${pct}%, rgba(255,255,255,0.07) ${pct}%)`,
+            background: `linear-gradient(to right, #8b5cf6 0%, #a3e635 ${pct}%, rgba(255,255,255,0.07) ${pct}%)`,
           }}
         />
         <div className="flex justify-between mt-1">
@@ -199,7 +199,7 @@ export function ParamSlider({ label, name, min, max, step = 0.1, value, unit, on
         </div>
       </div>
       {description && (
-        <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem', color: '#636880', lineHeight: 1.5, marginTop: '-4px' }}>
+        <p style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.75rem', color: '#636880', lineHeight: 1.5, marginTop: '-4px' }}>
           {description}
         </p>
       )}
@@ -252,13 +252,13 @@ export function WingCanvas({ geometry, height = 180 }) {
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
       <defs>
         <linearGradient id="wingFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#00c8ff" stopOpacity="0.10" />
-          <stop offset="100%" stopColor="#00e5cc" stopOpacity="0.03" />
+          <stop offset="0%"   stopColor="#8b5cf6" stopOpacity="0.12" />
+          <stop offset="100%" stopColor="#a3e635" stopOpacity="0.03" />
         </linearGradient>
-        <filter id="wingLineGlow">
-          <feGaussianBlur stdDeviation="2" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" />
-        </filter>
+        <linearGradient id="upperGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#8b5cf6" />
+          <stop offset="100%" stopColor="#c084fc" />
+        </linearGradient>
       </defs>
 
       {/* Subtle grid */}
@@ -273,25 +273,25 @@ export function WingCanvas({ geometry, height = 180 }) {
       <path d={outerPath} fill="url(#wingFill)" />
 
       {/* Upper surface glow */}
-      <polyline points={upper} fill="none" stroke="#00c8ff" strokeWidth="4"
-        strokeLinecap="round" strokeLinejoin="round" opacity="0.15"/>
+      <polyline points={upper} fill="none" stroke="#8b5cf6" strokeWidth="4"
+        strokeLinecap="round" strokeLinejoin="round" opacity="0.18"/>
       {/* Upper surface line */}
-      <polyline points={upper} fill="none" stroke="#00c8ff" strokeWidth="2"
+      <polyline points={upper} fill="none" stroke="url(#upperGrad)" strokeWidth="2"
         strokeLinecap="round" strokeLinejoin="round"
-        style={{ filter: 'drop-shadow(0 0 3px rgba(0,200,255,0.6))' }}/>
+        style={{ filter: 'drop-shadow(0 0 4px rgba(139,92,246,0.7))' }}/>
 
       {/* Lower surface */}
-      <polyline points={lower} fill="none" stroke="#00e5cc" strokeWidth="1.5"
-        strokeLinecap="round" strokeLinejoin="round" opacity="0.8"/>
+      <polyline points={lower} fill="none" stroke="#a3e635" strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>
 
       {/* Camber line */}
       <polyline points={camber} fill="none" stroke="#ffb020" strokeWidth="1"
-        strokeDasharray="5 4" opacity="0.55"/>
+        strokeDasharray="5 4" opacity="0.45"/>
 
       {/* Labels */}
-      <text x={mapX(0) - 6} y={H/2} textAnchor="end" fill="#00c8ff" fontSize="9"
+      <text x={mapX(0) - 6} y={H/2} textAnchor="end" fill="#8b5cf6" fontSize="9"
         fontFamily="JetBrains Mono" dominantBaseline="middle" opacity="0.7">LE</text>
-      <text x={mapX(1) + 6} y={H/2} textAnchor="start" fill="#00c8ff" fontSize="9"
+      <text x={mapX(1) + 6} y={H/2} textAnchor="start" fill="#8b5cf6" fontSize="9"
         fontFamily="JetBrains Mono" dominantBaseline="middle" opacity="0.7">TE</text>
       {[0.25, 0.5, 0.75].map(x => (
         <text key={x} x={mapX(x)} y={H - pad + 14} textAnchor="middle"
@@ -300,9 +300,9 @@ export function WingCanvas({ geometry, height = 180 }) {
 
       {/* Legend */}
       <g opacity="0.7">
-        <line x1={W - 110} y1={H - 10} x2={W - 94} y2={H - 10} stroke="#00c8ff" strokeWidth="2"/>
+        <line x1={W - 110} y1={H - 10} x2={W - 94} y2={H - 10} stroke="#8b5cf6" strokeWidth="2"/>
         <text x={W - 90} y={H - 10} fill="#636880" fontSize="8" fontFamily="JetBrains Mono" dominantBaseline="middle">upper</text>
-        <line x1={W - 110} y1={H - 1}  x2={W - 94} y2={H - 1}  stroke="#00e5cc" strokeWidth="1.5"/>
+        <line x1={W - 110} y1={H - 1}  x2={W - 94} y2={H - 1}  stroke="#a3e635" strokeWidth="1.5"/>
         <text x={W - 90} y={H - 1}  fill="#636880" fontSize="8" fontFamily="JetBrains Mono" dominantBaseline="middle">lower</text>
         <line x1={W - 110} y1={H + 8}  x2={W - 94} y2={H + 8}  stroke="#ffb020" strokeWidth="1" strokeDasharray="4 3"/>
         <text x={W - 90} y={H + 8}  fill="#636880" fontSize="8" fontFamily="JetBrains Mono" dominantBaseline="middle">camber</text>
@@ -343,7 +343,7 @@ export function ErrorBox({ message }) {
         <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--signal)', fontWeight: 500 }}>
           Error
         </p>
-        <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.78rem', color: '#ffaaaa', marginTop: '3px' }}>
+        <p style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.78rem', color: '#ffaaaa', marginTop: '3px' }}>
           {message}
         </p>
       </div>
@@ -359,25 +359,30 @@ export function SectionTitle({ children, sub, step }) {
         {step && (
           <span style={{
             width: '28px', height: '28px',
-            borderRadius: '50%',
-            border: '1px solid rgba(0,200,255,0.3)',
-            background: 'rgba(0,200,255,0.08)',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, #8b5cf6, #a3e635)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.7rem', fontWeight: 600,
-            color: 'var(--arc)',
+            fontSize: '0.7rem', fontWeight: 700,
+            color: '#04040a',
             flexShrink: 0,
+            boxShadow: '0 2px 12px rgba(139,92,246,0.35)',
           }}>
             {step}
           </span>
         )}
-        <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: '1.5rem', fontWeight: 700, color: '#fff', lineHeight: 1.15 }}>
+        <h2 style={{
+          fontFamily: 'Syne, sans-serif', fontSize: '1.5rem', fontWeight: 800, lineHeight: 1.15,
+          background: 'linear-gradient(90deg, #fff 0%, #c084fc 60%, #a3e635 100%)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+        }}>
           {children}
         </h2>
       </div>
       {sub && (
         <p style={{
-          fontFamily: 'Outfit, sans-serif',
+          fontFamily: '"Plus Jakarta Sans", sans-serif',
           fontSize: '0.88rem',
           color: '#636880',
           lineHeight: 1.65,
@@ -461,9 +466,9 @@ export function EmptyState({ icon, title, body, action }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       {icon && <div style={{ fontSize: '2.5rem', opacity: 0.25 }}>{icon}</div>}
-      <p style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, color: '#dde2ed' }}>{title}</p>
+      <p style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 600, color: '#dde2ed' }}>{title}</p>
       {body && (
-        <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', color: '#636880', maxWidth: '340px', lineHeight: 1.65 }}>
+        <p style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.85rem', color: '#636880', maxWidth: '340px', lineHeight: 1.65 }}>
           {body}
         </p>
       )}
@@ -503,7 +508,7 @@ export function ProgressBar({ value, max = 100, color = 'blue', showLabel = fals
 export function FidelityBadge({ level, label, trust, converged }) {
   const config = {
     0: { color: 'var(--ember)',    bg: 'rgba(255,176,32,0.10)',  border: 'rgba(255,176,32,0.25)',  text: 'L0 Conceptual' },
-    1: { color: 'var(--arc)',      bg: 'rgba(0,200,255,0.10)',   border: 'rgba(0,200,255,0.25)',   text: 'L1 2D CFD' },
+    1: { color: 'var(--violet-soft)', bg: 'rgba(192,132,252,0.10)', border: 'rgba(192,132,252,0.25)', text: 'L1 2D CFD' },
     2: { color: 'var(--phosphor)', bg: 'rgba(57,255,136,0.10)',  border: 'rgba(57,255,136,0.25)',  text: 'L2 3D RANS' },
   }
   const cfg = config[level ?? 0] || config[0]
@@ -672,7 +677,7 @@ export function ConstraintPanel({ summary }) {
                     {r.name}
                   </span>
                   {r.message && (
-                    <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.72rem', color: '#636880', marginLeft: '6px' }}>
+                    <span style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.72rem', color: '#636880', marginLeft: '6px' }}>
                       {r.message}
                     </span>
                   )}
@@ -718,7 +723,7 @@ export function ConditionSelector({ value, onChange }) {
               transition: 'all 0.15s',
             }}
           >
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', fontWeight: 500, color: value === s.id ? 'var(--arc)' : '#dde2ed' }}>
+            <span style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.82rem', fontWeight: 500, color: value === s.id ? 'var(--arc)' : '#dde2ed' }}>
               {s.label}
             </span>
             <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>

@@ -1,135 +1,237 @@
-// src/pages/Design.jsx
-import React, { useState, useEffect, useRef } from 'react'
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts'
-import { Play, Zap, RotateCcw, TrendingDown, Layers, Wind, Settings2, Box, Upload } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+// src/pages/Design.jsx — Cinematic sci-fi aerodynamic design studio
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../api/client'
-import {
-  AccordionGroup, ParamSlider, MetricCard, WingCanvas,
-  StatusBadge, ErrorBox, SectionTitle, ChartTooltip,
-  InfoTooltip, BeginnerTip, LoadingPage, ProgressBar,
-  FidelityBadge, ConfidenceBar, ConstraintPanel
-} from '../components/ui'
+import SciFiScene from '../components/design/SciFiScene'
+import AnalysisOverlay from '../components/design/AnalysisOverlay'
+import ResultsPanel from '../components/design/ResultsPanel'
+import AnalysisControl from '../components/design/AnalysisControl'
+import { SF } from '../components/design/tokens'
 
-const AIRFOIL_PARAMS = [
-  {
-    name: 'camber_pct', label: 'Max Camber', min: 0, max: 9, step: 0.1, unit: '%',
-    description: 'How curved the wing is. More camber = more downforce but stalls sooner.',
-    tooltip: 'Camber is the maximum curvature of the wing\'s centreline. A higher value bends the wing more aggressively, generating more downforce — but too much causes the airflow to "stall" and detach, ruining performance.',
-  },
-  {
-    name: 'camber_pos_pct', label: 'Camber Position', min: 20, max: 60, step: 1, unit: '%c',
-    description: 'Where along the chord the peak curvature sits.',
-    tooltip: 'The location of maximum camber as a percentage of the chord. Moving it forward loads the front of the wing; rearward shifts suction peaks toward the trailing edge.',
-  },
-  {
-    name: 'thickness_pct', label: 'Max Thickness', min: 6, max: 20, step: 0.5, unit: '%',
-    description: 'How thick the wing cross-section is. Thicker = stronger but more drag.',
-    tooltip: 'Maximum section thickness as a percentage of chord. Thicker wings are structurally stiffer and delay stall, but add friction drag.',
-  },
-]
-
-const AERO_PARAMS = [
-  {
-    name: 'aoa_deg', label: 'Angle of Attack', min: -18, max: 0, step: 0.5, unit: '°',
-    description: 'How steeply the wing tilts into the air. More negative = more downforce.',
-    tooltip: 'For an inverted wing like on a race car, a more negative angle points the nose down into the airflow, increasing the pressure difference that produces downforce.',
-  },
-  {
-    name: 'flap_angle_deg', label: 'Flap Deflection', min: 0, max: 35, step: 1, unit: '°',
-    description: 'Trailing-edge flap angle — biggest lever for downforce.',
-    tooltip: 'The trailing-edge flap rotates downward to increase effective camber. Same principle as aircraft landing flaps — dramatically increases downforce but also drag.',
-  },
-  {
-    name: 'flap_chord_pct', label: 'Flap Chord', min: 20, max: 35, step: 1, unit: '%c',
-    description: 'How large the flap is relative to the whole wing.',
-    tooltip: 'The size of the flap element as a fraction of total chord length. A larger flap has more authority but adds drag when deflected.',
-  },
-]
-
-const GEOMETRY_PARAMS = [
-  {
-    name: 'aspect_ratio', label: 'Aspect Ratio', min: 2, max: 5.5, step: 0.1, unit: '',
-    description: 'Span vs width. Higher = less induced drag but heavier.',
-    tooltip: 'Aspect ratio = span² ÷ area. A high aspect ratio (long, narrow wing) reduces tip vortices that waste energy as "induced drag".',
-  },
-  {
-    name: 'endplate_h_pct', label: 'Endplate Height', min: 5, max: 30, step: 1, unit: '%b',
-    description: 'The vertical fences at wing tips. Taller = less vortex loss.',
-    tooltip: 'Endplates are the vertical fins at the ends of Formula wings. They block air from leaking around the tips, effectively making the wing behave as if it has a larger span.',
-  },
-]
-
-const PLANFORM_3D_PARAMS = [
-  {
-    name: 'taper_ratio', label: 'Taper Ratio', min: 0.3, max: 1.0, step: 0.05, unit: '',
-    description: 'Tip chord / root chord. 1 = rectangular, <1 = tapered tip.',
-    tooltip: 'Taper ratio controls how the chord length changes from root to tip. Tapered wings reduce structural weight and improve spanwise lift distribution.',
-  },
-  {
-    name: 'sweep_deg', label: 'Quarter-Chord Sweep', min: 0, max: 30, step: 1, unit: '°',
-    description: 'Rearward sweep of the c/4 line. Increases at high speed.',
-    tooltip: 'Sweep angle of the quarter-chord line. Swept wings reduce shock effects at transonic speeds and shift the aerodynamic centre rearward.',
-  },
-  {
-    name: 'twist_deg', label: 'Washout Twist', min: 0, max: 8, step: 0.5, unit: '°',
-    description: 'Tip AoA relative to root. Prevents tip stall.',
-    tooltip: 'Geometric washout: the tip is twisted to a lower angle of attack than the root. This distributes lift more evenly and delays tip stall.',
-  },
-  {
-    name: 'ride_height_pct', label: 'Ride Height', min: 2, max: 50, step: 1, unit: '%c',
-    description: 'Wing height above ground / chord. Small = strong ground effect.',
-    tooltip: 'Ground effect dramatically increases downforce when the wing is close to the track. F1 front wings run at ~5–12% chord height above the road surface.',
-  },
-  {
-    name: 'flap_gap_pct', label: 'Flap Gap', min: 0.5, max: 4.0, step: 0.1, unit: '%c',
-    description: 'Slot between main element and flap. Controls cascade interference.',
-    tooltip: 'The gap between the mainplane trailing edge and flap leading edge controls boundary layer re-energisation. Optimal gap is typically 1–2% chord.',
-  },
-]
-
-const BASELINE_3D = {
-  taper_ratio: 1.0,
-  sweep_deg:   0.0,
-  twist_deg:   0.0,
-  ride_height_pct: 8.0,
-  flap_gap_pct:    1.5,
-}
-
+// ── Design parameters ─────────────────────────────────────────────────────────
 const BASELINE = {
   camber_pct: 4, camber_pos_pct: 40, thickness_pct: 12,
   aoa_deg: -5, flap_angle_deg: 10, flap_chord_pct: 25,
   aspect_ratio: 3.5, endplate_h_pct: 15,
 }
-
-const METRIC_TOOLTIPS = {
-  downforce: 'Downforce is the aerodynamic force pushing the car toward the track. Like lift on an aircraft wing, but inverted. The baseline generates ~400–600 N.',
-  drag: 'Drag is the aerodynamic resistance opposing forward motion. Lower drag = higher top speed, but usually means less downforce.',
-  efficiency: 'Efficiency = |Downforce| ÷ Drag. A higher number means more downforce for each unit of drag — the key performance metric.',
-  cl: 'Cl is the 2D lift coefficient — how much lift the airfoil cross-section generates per unit area. Negative = downforce direction.',
-  cd: 'Cd is the 2D drag coefficient. Dimensionless. Includes friction drag and pressure (form) drag.',
-  ld: 'L/D ratio: the 2D aerodynamic efficiency of the airfoil alone, before 3D effects like tip vortices.',
+const BASELINE_3D = {
+  taper_ratio: 1.0, sweep_deg: 0.0, twist_deg: 0.0,
+  ride_height_pct: 8.0, flap_gap_pct: 1.5,
 }
 
+// ── Top-left corner data display ──────────────────────────────────────────────
+function CornerData({ params, metrics }) {
+  const items = [
+    { k: 'AoA',    v: `${params.aoa_deg}°` },
+    { k: 'Camber', v: `${params.camber_pct.toFixed(1)}%` },
+    { k: 'AR',     v: params.aspect_ratio.toFixed(1) },
+    ...(metrics ? [
+      { k: 'Cl',  v: metrics.Cl?.toFixed(3) ?? '—' },
+      { k: 'Eff', v: metrics.efficiency?.toFixed(2) ?? '—' },
+    ] : []),
+  ]
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 1.2 }}
+      style={{
+        position: 'fixed', top: `${SF.navH + 16}px`, left: '24px',
+        zIndex: 20, pointerEvents: 'none',
+      }}
+    >
+      {items.map(({ k, v }) => (
+        <div key={k} style={{ display: 'flex', gap: '8px', lineHeight: '1.9' }}>
+          <span style={{ fontFamily: SF.fontMono, fontSize: '9px', color: SF.textMuted, minWidth: '40px' }}>{k}</span>
+          <span style={{ fontFamily: SF.fontMono, fontSize: '9px', color: SF.cyanDim }}>{v}</span>
+        </div>
+      ))}
+    </motion.div>
+  )
+}
+
+// ── Top-right corner data display ─────────────────────────────────────────────
+function CornerDataRight({ metrics }) {
+  if (!metrics) return null
+  const items = [
+    { k: 'DF',   v: `${metrics.downforce_N?.toFixed(0)} N` },
+    { k: 'Drag', v: `${metrics.drag_N?.toFixed(1)} N` },
+    { k: 'Cd',   v: metrics.Cd?.toFixed(5) ?? '—' },
+  ]
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      style={{
+        position: 'fixed', top: `${SF.navH + 16}px`, right: '88px',
+        zIndex: 20, pointerEvents: 'none', textAlign: 'right',
+      }}
+    >
+      {items.map(({ k, v }) => (
+        <div key={k} style={{ display: 'flex', gap: '8px', lineHeight: '1.9', justifyContent: 'flex-end' }}>
+          <span style={{ fontFamily: SF.fontMono, fontSize: '9px', color: SF.textMuted }}>{k}</span>
+          <span style={{ fontFamily: SF.fontMono, fontSize: '9px', color: SF.cyanDim }}>{v}</span>
+        </div>
+      ))}
+    </motion.div>
+  )
+}
+
+// ── Page title / breadcrumb ───────────────────────────────────────────────────
+function PageTitle() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.6, duration: 0.6 }}
+      style={{
+        position: 'fixed', top: `${SF.navH + 14}px`, left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 20, pointerEvents: 'none',
+        display: 'flex', alignItems: 'center', gap: '8px',
+      }}
+    >
+      <span style={{ fontFamily: SF.fontMono, fontSize: '9px', letterSpacing: '0.18em', color: SF.textMuted }}>
+        WING · DESIGN · STUDIO
+      </span>
+      <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: SF.cyanFaint }} />
+      <span style={{ fontFamily: SF.fontMono, fontSize: '9px', letterSpacing: '0.1em', color: SF.cyanGhost }}>
+        NACA SERIES
+      </span>
+    </motion.div>
+  )
+}
+
+// ── Hotspot hint (shown on first load) ───────────────────────────────────────
+function HotspotHint({ show }) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ delay: 2.5, duration: 0.5 }}
+          style={{
+            position: 'fixed',
+            bottom: '100px', left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 20, pointerEvents: 'none',
+            fontFamily: SF.fontMono, fontSize: '9px',
+            color: SF.textMuted,
+            letterSpacing: '0.1em',
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}
+        >
+          <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: SF.cyanDim, animation: 'sfPulse 2s infinite' }} />
+          CLICK HOTSPOT DOTS TO MODIFY PARAMETERS
+          <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: SF.cyanDim, animation: 'sfPulse 2s infinite' }} />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// ── Error toast ───────────────────────────────────────────────────────────────
+function ErrorToast({ error, onDismiss }) {
+  return (
+    <AnimatePresence>
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          style={{
+            position: 'fixed', bottom: '100px', left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 50,
+            padding: '9px 16px',
+            background: 'rgba(255,61,90,0.10)',
+            border: '1px solid rgba(255,61,90,0.32)',
+            borderRadius: '6px',
+            backdropFilter: 'blur(20px)',
+            fontFamily: SF.fontMono, fontSize: '10px', color: SF.red,
+            display: 'flex', alignItems: 'center', gap: '8px',
+            cursor: 'none',
+            pointerEvents: 'auto',
+          }}
+          onClick={onDismiss}
+        >
+          ⚠ {error}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// ── Keyboard hints ────────────────────────────────────────────────────────────
+function KeyHints() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 3 }}
+      style={{
+        position: 'fixed', bottom: '28px', left: '28px',
+        zIndex: 20, pointerEvents: 'none',
+        display: 'flex', gap: '14px',
+      }}
+    >
+      {[
+        { key: 'DRAG', action: 'ROTATE' },
+        { key: 'SCROLL', action: 'ZOOM' },
+        { key: 'ESC', action: 'CLOSE PANEL' },
+      ].map(({ key, action }) => (
+        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span style={{
+            fontFamily: SF.fontMono, fontSize: '8px', color: SF.textMuted,
+            background: SF.cyanGhost, border: `1px solid ${SF.borderDim}`,
+            borderRadius: '3px', padding: '1px 5px',
+          }}>
+            {key}
+          </span>
+          <span style={{ fontFamily: SF.fontMono, fontSize: '8px', color: SF.textMuted, opacity: 0.5 }}>
+            {action}
+          </span>
+        </div>
+      ))}
+    </motion.div>
+  )
+}
+
+// ── Main Design Page ──────────────────────────────────────────────────────────
 export default function DesignPage() {
-  const navigate = useNavigate()
   const [params, setParams]         = useState(BASELINE)
   const [params3d, setParams3d]     = useState(BASELINE_3D)
-  const [geometry, setGeometry]     = useState(null)
-  const [metrics, setMetrics]       = useState(null)
-  const [mlPred, setMlPred]         = useState(null)
-  const [uncertainPred, setUncPred] = useState(null)
-  const [constraints, setConstraints] = useState(null)
-  const [sweep, setSweep]           = useState(null)
-  const [result3d, setResult3d]     = useState(null)
-  const [loading, setLoading]       = useState({ geo: false, phys: false, ml: false, sweep: false, unc: false, vlm: false })
-  const [error, setError]           = useState('')
+  const [geoData, setGeoData]       = useState(null)
   const [baseline, setBaseline]     = useState(null)
+
+  const [activeHotspot, setActiveHotspot] = useState(null)
+  const [analysisType, setAnalysisType]   = useState('physics')
+  const [sceneMode, setSceneMode]         = useState('idle')   // 'idle' | 'analyzing' | 'results'
+  const [results, setResults]             = useState(null)
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState('')
+  const [showHint, setShowHint]           = useState(true)
+  const [apiStatus, setApiStatus]         = useState('checking')
+
   const geoTimer = useRef(null)
 
+  // ── Fetch geometry on mount and param change ─────────────────────────────
+  const fetchGeometry = useCallback(async (p) => {
+    try { setGeoData(await api.geometry(p)) } catch {}
+  }, [])
+
   useEffect(() => {
+    // API health check
+    api.health()
+      .then(d => setApiStatus(d.models_loaded ? 'ready' : 'partial'))
+      .catch(() => setApiStatus('offline'))
+
     api.baseline().then(b => setBaseline(b.metrics)).catch(() => {})
-    // Load params injected from Upload page
+
+    // Check for imported params from Upload page
     const loaded = sessionStorage.getItem('wopt_loaded_params')
     if (loaded) {
       try {
@@ -142,735 +244,144 @@ export default function DesignPage() {
       } catch {}
     }
     fetchGeometry(BASELINE)
-  }, [])
+  }, [fetchGeometry])
 
-  const setLoad = (key, val) => setLoading(l => ({ ...l, [key]: val }))
+  // Hide hint after first hotspot interaction
+  useEffect(() => {
+    if (activeHotspot) setShowHint(false)
+  }, [activeHotspot])
 
-  const fetchGeometry = async (p) => {
-    setLoad('geo', true)
-    try { setGeometry(await api.geometry(p)) } catch {}
-    setLoad('geo', false)
-  }
-
-  const handleParam = (name, val) => {
+  // ── Param change handlers ────────────────────────────────────────────────
+  const handleParam = useCallback((name, val) => {
     const next = { ...params, [name]: val }
     setParams(next)
     clearTimeout(geoTimer.current)
     geoTimer.current = setTimeout(() => fetchGeometry(next), 300)
-  }
+  }, [params, fetchGeometry])
 
-  const runPhysics = async () => {
-    setLoad('phys', true); setError('')
+  const handleParam3d = useCallback((name, val) => {
+    setParams3d(p => ({ ...p, [name]: val }))
+  }, [])
+
+  // ── Analysis dispatcher ──────────────────────────────────────────────────
+  const handleRunAnalysis = useCallback(async (type) => {
+    setLoading(true)
+    setError('')
+    setSceneMode('analyzing')
+    setResults(null)
+
     try {
-      const res = await api.evaluate(params)
-      setMetrics(res)
-      // Auto-run constraint check after physics
-      try {
-        const cs = await api.checkConstraints({ params, metrics: res.metrics || {} })
-        setConstraints(cs)
-      } catch {}
-    } catch (e) { setError(e.message) }
-    setLoad('phys', false)
-  }
+      let res = null
+      switch (type) {
+        case 'physics': {
+          res = await api.evaluate(params)
+          // Auto-check constraints
+          try {
+            await api.checkConstraints({ params, metrics: res.metrics || {} })
+          } catch {}
+          break
+        }
+        case 'ml': {
+          res = await api.predict(params)
+          res = { metrics: { Cl: res.Cl, Cd: res.Cd, downforce_N: res.downforce_N, drag_N: res.drag_N, efficiency: res.efficiency, converged: true, stall_flag: false }, predictions: res }
+          break
+        }
+        case '3d': {
+          const data = await api.analyze3d({ ...params, ...params3d })
+          // Also run L0 for base metrics if available
+          let baseMetrics = null
+          try { baseMetrics = (await api.evaluate(params)).metrics } catch {}
+          res = { ...(baseMetrics ? { metrics: baseMetrics } : {}), ...data }
+          break
+        }
+        case 'sweep': {
+          const data = await api.sweep({ params, aoa_start: -18, aoa_end: -1, n_points: 18 })
+          res = { sweep: data.sweep, metrics: null }
+          break
+        }
+        default:
+          break
+      }
+      setResults(res)
+      setSceneMode('results')
+    } catch (e) {
+      setError(e.message || 'Analysis failed')
+      setSceneMode('idle')
+    } finally {
+      setLoading(false)
+    }
+  }, [params, params3d])
 
-  const runML = async () => {
-    setLoad('ml', true); setError('')
-    try { setMlPred(await api.predict(params)) } catch (e) { setError(e.message) }
-    setLoad('ml', false)
-  }
+  // ── The full-screen experience rendered as portal ────────────────────────
+  const experience = (
+    <>
+      {/* Global styles for this experience */}
+      <style>{`
+        @keyframes sfPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.5; transform: scale(1.3); }
+        }
+        @keyframes hotRing {
+          0%   { transform: scale(1); opacity: 0.7; }
+          100% { transform: scale(2.6); opacity: 0; }
+        }
+        @keyframes scanShimmer {
+          from { left: -40px; }
+          to   { left: calc(100% + 40px); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+      `}</style>
 
-  const runUncertain = async () => {
-    setLoad('unc', true); setError('')
-    try { setUncPred(await api.predictUncertain(params)) } catch (e) { setError(e.message) }
-    setLoad('unc', false)
-  }
+      {/* 3D scene */}
+      <SciFiScene
+        geoData={geoData}
+        params={params}
+        params3d={params3d}
+        activeHotspot={activeHotspot}
+        setActiveHotspot={setActiveHotspot}
+        onParamChange={handleParam}
+        onParam3dChange={handleParam3d}
+        isAnalyzing={sceneMode === 'analyzing'}
+      />
 
-  const runSweep = async () => {
-    setLoad('sweep', true)
-    try {
-      const res = await api.sweep({ params, aoa_start: -18, aoa_end: -1, n_points: 18 })
-      setSweep(res.sweep)
-    } catch (e) { setError(e.message) }
-    setLoad('sweep', false)
-  }
+      {/* 2D Overlay elements */}
+      <PageTitle />
+      <CornerData params={params} metrics={results?.metrics} />
+      <CornerDataRight metrics={results?.metrics} />
+      <HotspotHint show={showHint} />
+      <KeyHints />
 
-  const handleParam3d = (name, val) => setParams3d(p => ({ ...p, [name]: val }))
+      {/* Analysis loading overlay */}
+      <AnalysisOverlay
+        visible={sceneMode === 'analyzing'}
+        analysisType={analysisType}
+      />
 
-  const run3D = async () => {
-    setLoad('vlm', true); setError('')
-    try {
-      const res = await api.analyze3d({ ...params, ...params3d })
-      setResult3d(res)
-    } catch (e) { setError(e.message) }
-    setLoad('vlm', false)
-  }
+      {/* Results panel */}
+      <ResultsPanel
+        results={results}
+        analysisType={analysisType}
+        baseline={baseline}
+        visible={sceneMode === 'results'}
+        onClose={() => setSceneMode('idle')}
+      />
 
-  const reset = () => {
-    setParams(BASELINE)
-    setParams3d(BASELINE_3D)
-    fetchGeometry(BASELINE)
-    setMetrics(null); setMlPred(null); setUncPred(null); setSweep(null)
-    setConstraints(null); setResult3d(null); setError('')
-  }
+      {/* Analysis control (FAB + panel) */}
+      <AnalysisControl
+        onRun={handleRunAnalysis}
+        loading={loading}
+        analysisType={analysisType}
+        setAnalysisType={setAnalysisType}
+        apiStatus={apiStatus}
+      />
 
-  const m  = metrics?.metrics
-  const bl = baseline
-
-  // Summaries for collapsed accordion headers
-  const airfoilSummary  = `${params.camber_pct.toFixed(1)}% · ${params.camber_pos_pct}%c · ${params.thickness_pct.toFixed(1)}%`
-  const aeroSummary     = `${params.aoa_deg}° · ${params.flap_angle_deg}° flap`
-  const geometrySummary = `AR ${params.aspect_ratio.toFixed(1)} · EP ${params.endplate_h_pct}%`
-
-  return (
-    <div className="animate-fade-in">
-      <SectionTitle
-        step={1}
-        sub="Adjust the 8 design parameters to shape a Formula-style front wing, then evaluate its aerodynamic performance."
-      >
-        Wing Design Studio
-      </SectionTitle>
-
-      {/* Beginner intro */}
-      <BeginnerTip icon="🏎️">
-        New here? A Formula-style front wing generates <strong>downforce</strong> — aerodynamic force pushing the car toward the track for better cornering grip.
-        Use the parameter sliders on the left to shape the wing, then click <strong>Run Physics Solver</strong> to calculate the aerodynamic forces.
-        Hover the{' '}
-        <span style={{ display: 'inline-flex', alignItems: 'center' }}>?</span>
-        {' '}icons for plain-English explanations.
-      </BeginnerTip>
-
-      {/* Mobile: stacked | Desktop: 12-col grid */}
-      <div className="flex flex-col md:grid md:grid-cols-12 gap-4 md:gap-5 mt-4 md:mt-5">
-
-        {/* ── Left panel: parameter sliders ─────────────────────────────────── */}
-        <div className="md:col-span-3 flex flex-col gap-3">
-
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <span style={{ fontFamily: 'Syne, sans-serif', fontSize: '0.9rem', fontWeight: 700, color: '#dde2ed' }}>
-              Parameters
-            </span>
-            <button onClick={reset} className="btn-ghost py-1 px-3" style={{ fontSize: '0.75rem' }}>
-              <RotateCcw size={11} /> Reset
-            </button>
-          </div>
-
-          {/* Accordion parameter groups */}
-          <AccordionGroup
-            title="Airfoil Shape"
-            icon={Layers}
-            defaultOpen={true}
-            summary={airfoilSummary}
-            tooltip="These parameters control the 2D cross-section profile. Think of it as choosing the shape of a slice through the wing."
-          >
-            {AIRFOIL_PARAMS.map(cfg => (
-              <ParamSlider key={cfg.name} {...cfg} value={params[cfg.name]} onChange={handleParam} />
-            ))}
-          </AccordionGroup>
-
-          <AccordionGroup
-            title="Aerodynamic Settings"
-            icon={Wind}
-            defaultOpen={true}
-            summary={aeroSummary}
-            tooltip="These settings control how the wing is positioned and adjusted in the airstream — the primary levers for tuning downforce vs drag."
-          >
-            {AERO_PARAMS.map(cfg => (
-              <ParamSlider key={cfg.name} {...cfg} value={params[cfg.name]} onChange={handleParam} />
-            ))}
-          </AccordionGroup>
-
-          <AccordionGroup
-            title="Wing Geometry"
-            icon={Settings2}
-            defaultOpen={false}
-            summary={geometrySummary}
-            tooltip="These define the overall 3D shape — including how the wing handles airflow at the tips."
-          >
-            {GEOMETRY_PARAMS.map(cfg => (
-              <ParamSlider key={cfg.name} {...cfg} value={params[cfg.name]} onChange={handleParam} />
-            ))}
-          </AccordionGroup>
-
-          <AccordionGroup
-            title="3D Planform"
-            icon={Box}
-            defaultOpen={false}
-            summary={`${params3d.taper_ratio.toFixed(2)} taper · ${params3d.sweep_deg}° sweep · h=${params3d.ride_height_pct}%`}
-            tooltip="3D planform parameters used by the Vortex Lattice Method solver. These define the real 3D wing shape beyond the 2D cross-section."
-          >
-            {PLANFORM_3D_PARAMS.map(cfg => (
-              <ParamSlider key={cfg.name} {...cfg} value={params3d[cfg.name]} onChange={handleParam3d} />
-            ))}
-          </AccordionGroup>
-
-          {/* Action buttons */}
-          <div className="flex flex-col gap-2 mt-1">
-            <button onClick={runPhysics} disabled={loading.phys} className="btn-primary w-full justify-center">
-              <Play size={13} />
-              {loading.phys ? 'Solving…' : 'L0 Physics Eval'}
-            </button>
-            <button onClick={run3D} disabled={loading.vlm} className="btn-primary w-full justify-center"
-              style={{ background: 'linear-gradient(135deg, #39ff88 0%, #00e5cc 100%)', color: '#06080f' }}
-            >
-              <Box size={13} />
-              {loading.vlm ? 'Running VLM…' : 'Run 3D VLM Analysis'}
-            </button>
-            <button onClick={runML} disabled={loading.ml} className="btn-secondary w-full justify-center">
-              <Zap size={13} />
-              {loading.ml ? 'Predicting…' : 'ML Quick Predict'}
-            </button>
-            <button onClick={runUncertain} disabled={loading.unc} className="btn-ghost w-full justify-center" style={{ fontSize: '0.78rem' }}>
-              <Zap size={12} />
-              {loading.unc ? 'Running…' : 'Predict + Uncertainty'}
-            </button>
-            <button onClick={runSweep} disabled={loading.sweep} className="btn-ghost w-full justify-center" style={{ fontSize: '0.78rem' }}>
-              <TrendingDown size={12} />
-              {loading.sweep ? 'Sweeping angles…' : 'AoA Polar Sweep'}
-            </button>
-            <button
-              onClick={() => navigate('/upload')}
-              className="btn-ghost w-full justify-center"
-              style={{ fontSize: '0.78rem', borderColor: 'rgba(0,200,255,0.15)' }}
-            >
-              <Upload size={12} />
-              Import your design
-            </button>
-          </div>
-
-          {/* Button explainer */}
-          <div className="card p-4 flex flex-col gap-3">
-            {[
-              { dot: 'var(--arc)',      label: 'L0 Physics Eval',       desc: 'Panel/BL solver — 2D + Prandtl lifting-line' },
-              { dot: 'var(--phosphor)', label: 'Run 3D VLM Analysis',   desc: 'Vortex Lattice: taper, sweep, ground effect' },
-              { dot: 'var(--teal)',     label: 'ML Quick Predict',       desc: 'Ensemble surrogate — <1ms, no CFD' },
-              { dot: 'var(--ember)',    label: 'Predict + Uncertainty',  desc: 'Surrogate + GP confidence bands' },
-              { dot: '#3e4257',         label: 'AoA Polar Sweep',        desc: 'Sweep all angles at once' },
-            ].map(({ dot, label, desc }) => (
-              <div key={label} className="flex items-start gap-2.5">
-                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dot, flexShrink: 0, marginTop: '5px', boxShadow: `0 0 6px ${dot}` }} />
-                <div>
-                  <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.78rem', fontWeight: 600, color: '#a8b2c8' }}>{label}</p>
-                  <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.72rem', color: '#636880', marginTop: '1px' }}>{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Centre panel: geometry + results ──────────────────────────────── */}
-        <div className="md:col-span-6 flex flex-col gap-4">
-
-          {/* Wing cross-section preview */}
-          <div className="card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="label">Wing cross-section</span>
-                <InfoTooltip text="This diagram shows the 2D profile (slice) of the wing. The blue line is the upper surface, teal is the lower surface, and the dashed amber line is the mean camber line. LE = Leading Edge (front), TE = Trailing Edge (back)." wide />
-              </div>
-              {geometry && (
-                <span className="badge badge-gray">{geometry.name}</span>
-              )}
-            </div>
-            {loading.geo
-              ? (
-                <div className="h-40 flex items-center justify-center gap-2" style={{ color: '#636880', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '50%', border: '2px solid var(--arc)', borderTopColor: 'transparent' }} className="animate-spin" />
-                  Updating geometry…
-                </div>
-              )
-              : <WingCanvas geometry={geometry} height={160} />
-            }
-            {geometry && (
-              <div className="flex gap-6 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                {[
-                  { label: 'Thickness', value: `${geometry.thickness_pct?.toFixed(1)}%` },
-                  { label: 'Camber',    value: `${geometry.camber_pct?.toFixed(1)}%` },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex gap-2 items-center">
-                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
-                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', fontWeight: 500, color: '#fff' }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Performance metrics */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="label">Performance results</span>
-              {!m && (
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#3e4257', fontStyle: 'italic' }}>
-                  — run the physics solver to see values
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 stagger">
-              <MetricCard
-                label="Downforce" value={m ? m.downforce_N.toFixed(0) : '—'} unit="N" color="blue"
-                tooltip={METRIC_TOOLTIPS.downforce}
-                delta={m && bl ? ((m.downforce_N - bl.downforce_N) / Math.abs(bl.downforce_N)) * 100 : undefined}
-              />
-              <MetricCard
-                label="Drag" value={m ? m.drag_N.toFixed(1) : '—'} unit="N" color="amber"
-                tooltip={METRIC_TOOLTIPS.drag}
-                delta={m && bl ? ((m.drag_N - bl.drag_N) / Math.abs(bl.drag_N)) * 100 : undefined}
-              />
-              <MetricCard
-                label="Efficiency |DF|/D" value={m ? m.efficiency.toFixed(2) : '—'} color="green"
-                tooltip={METRIC_TOOLTIPS.efficiency}
-                delta={m && bl ? ((m.efficiency - bl.efficiency) / Math.abs(bl.efficiency)) * 100 : undefined}
-              />
-              <MetricCard label="Cl (2D)"  value={m ? m.Cl.toFixed(4) : '—'}            color="cyan" small tooltip={METRIC_TOOLTIPS.cl} />
-              <MetricCard label="Cd (2D)"  value={m ? m.Cd.toFixed(5) : '—'}            color="cyan" small tooltip={METRIC_TOOLTIPS.cd} />
-              <MetricCard label="L/D"      value={m ? (m.Cl / m.Cd).toFixed(1) : '—'}  color="cyan" small tooltip={METRIC_TOOLTIPS.ld} />
-            </div>
-          </div>
-
-          {/* Fidelity + flow status */}
-          {m && (
-            <div className="card p-4 flex flex-col gap-3">
-              <FidelityBadge level={0} label="L0 Conceptual Screening" trust="moderate" converged={m.converged} />
-              <div className="flex items-center gap-3 flex-wrap">
-                <StatusBadge
-                  ok={m.converged}
-                  label={m.converged ? 'Flow converged' : 'Diverged'}
-                  tooltip="Convergence means the physics solver found a stable solution."
-                />
-                <StatusBadge
-                  ok={!m.stall_flag}
-                  label={m.stall_flag ? '⚠ Stall detected' : 'Attached flow'}
-                  tooltip="Stall occurs when the angle of attack is too steep and airflow separates from the wing surface."
-                />
-                {m.x_tr_upper !== undefined && (
-                  <div className="flex items-center gap-1.5" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: '#636880' }}>
-                    <InfoTooltip text="Transition location: where laminar flow becomes turbulent." />
-                    <span>xtr: {m.x_tr_upper?.toFixed(2)}c↑ / {m.x_tr_lower?.toFixed(2)}c↓</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Constraint panel */}
-          {constraints && <ConstraintPanel summary={constraints} />}
-
-          <ErrorBox message={error} />
-
-          {/* AoA Polar curve */}
-          {sweep && (
-            <div className="card p-5 animate-slide-up">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="label">AoA polar — Cl & Efficiency vs Angle of Attack</span>
-                <InfoTooltip text="This chart shows how the wing's lift (Cl) and efficiency change as the angle of attack sweeps from -18° to -1°. The point where Cl drops sharply is the stall angle — beyond that, performance falls off rapidly." wide />
-              </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={sweep} margin={{ top: 4, right: 16, left: -10, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="2 4" />
-                  <XAxis dataKey="aoa_deg" tickFormatter={v => `${v}°`} />
-                  <YAxis yAxisId="cl"  orientation="left" />
-                  <YAxis yAxisId="eff" orientation="right" />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Line yAxisId="cl"  dataKey="Cl"         stroke="var(--arc)"      strokeWidth={2}   dot={false} name="Cl (lift coeff)" />
-                  <Line yAxisId="eff" dataKey="efficiency" stroke="var(--phosphor)" strokeWidth={1.5} dot={false} name="Efficiency" />
-                  <ReferenceLine yAxisId="cl" y={0} stroke="rgba(255,255,255,0.06)" />
-                </LineChart>
-              </ResponsiveContainer>
-              <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: '#636880', marginTop: '8px' }}>
-                Watch for the sharp Cl drop — that's stall. The green efficiency curve shows the best operating angle.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* ── Right panel: ML predictions ───────────────────────────────────── */}
-        <div className="md:col-span-3 flex flex-col gap-4">
-
-          {/* ML Panel */}
-          <div className="card p-5">
-            <div className="flex items-center gap-1 mb-4">
-              <span className="label">AI Surrogate Models</span>
-              <InfoTooltip text="Instead of running the full physics solver (which takes ~1 second), we trained three AI models on 1,217 physics-evaluated designs. They predict performance in under 1 millisecond — 1000× faster." wide />
-            </div>
-
-            {mlPred ? (
-              <div className="flex flex-col gap-3">
-                {['xgboost', 'gp', 'mlp', 'ensemble'].map((model) => {
-                  const p = mlPred[model]
-                  if (!p) return null
-                  const isEnsemble = model === 'ensemble'
-                  const modelNames = { xgboost: 'XGBoost', gp: 'Gaussian Process', mlp: 'MLP Neural Net', ensemble: 'Ensemble' }
-                  const modelDescs = {
-                    xgboost: 'Tree-based, fast + SHAP',
-                    gp: 'Uncertainty-aware',
-                    mlp: 'Deep learning',
-                    ensemble: 'Average of all 3',
-                  }
-                  return (
-                    <div
-                      key={model}
-                      className={`card-sm p-3.5 ${isEnsemble ? 'card-glow-blue' : ''}`}
-                      style={isEnsemble ? { borderColor: 'rgba(0,200,255,0.25)' } : {}}
-                    >
-                      <div className="flex items-center justify-between mb-2.5">
-                        <span style={{
-                          fontFamily: 'Outfit, sans-serif',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          color: isEnsemble ? 'var(--arc)' : '#dde2ed',
-                        }}>
-                          {isEnsemble ? '★ ' : ''}{modelNames[model]}
-                        </span>
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>
-                          {modelDescs[model]}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                        {[
-                          ['Cl',       p.Cl?.toFixed(4)],
-                          ['Cd',       p.Cd?.toFixed(5)],
-                          ['Downforce',`${p.downforce_N?.toFixed(0)} N`],
-                          ['Effic.',   p.efficiency?.toFixed(2)],
-                        ].map(([k, v]) => (
-                          <div key={k} className="flex justify-between items-baseline">
-                            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>{k}</span>
-                            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', fontWeight: 600, color: isEnsemble ? 'var(--arc)' : '#dde2ed' }}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {/* Confidence */}
-                <div className="card-sm p-3.5">
-                  <div className="flex items-center gap-1 mb-2">
-                    <span className="label">Prediction confidence</span>
-                    <InfoTooltip text="The Gaussian Process estimates confidence based on how similar this design is to the training data. High confidence (>80%) means the models are in familiar territory." />
-                  </div>
-                  <ProgressBar value={(mlPred.reliability ?? 0.7) * 100} color="green" showLabel />
-                  <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880', marginTop: '6px' }}>
-                    {(mlPred.reliability ?? 0.7) > 0.8 ? 'High confidence — well-covered by training data'
-                    : (mlPred.reliability ?? 0.7) > 0.5 ? 'Moderate — verify with physics solver'
-                    : 'Low — design outside training distribution'}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <Zap size={28} style={{ color: '#1d1f2e' }} />
-                <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', color: '#636880', lineHeight: 1.6 }}>
-                  Click <span style={{ color: '#dde2ed', fontWeight: 600 }}>ML Quick Predict</span> to run all three AI models instantly
-                </p>
-                <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#3e4257' }}>
-                  Results in &lt;1ms
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Uncertainty prediction panel */}
-          {uncertainPred && (
-            <div className="card p-5 animate-slide-up">
-              <div className="flex items-center gap-1 mb-3">
-                <span className="label">Surrogate Uncertainty</span>
-                <InfoTooltip text="Uses the Gaussian Process model's posterior standard deviation to estimate prediction uncertainty. Flags if the design is outside the training distribution (extrapolation)." wide />
-              </div>
-              <div className="flex flex-col gap-3">
-                <ConfidenceBar
-                  confidence={uncertainPred.confidence ?? 0}
-                  label="Model confidence"
-                  stdPct={uncertainPred.Cl_std && uncertainPred.Cl ? Math.abs(uncertainPred.Cl_std / uncertainPred.Cl) : undefined}
-                />
-                <div className="flex items-center gap-2 flex-wrap">
-                  <FidelityBadge level={0} trust={uncertainPred.trust_label} />
-                  {uncertainPred.is_extrapolation && (
-                    <span style={{
-                      fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem',
-                      color: 'var(--signal)', padding: '2px 7px',
-                      borderRadius: '5px', background: 'rgba(255,61,90,0.08)',
-                      border: '1px solid rgba(255,61,90,0.20)',
-                    }}>
-                      EXTRAPOLATION WARNING
-                    </span>
-                  )}
-                </div>
-                {uncertainPred.distribution_distance !== null && (
-                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880' }}>
-                    Distribution distance: {uncertainPred.distribution_distance?.toFixed(2)} σ
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  {[
-                    ['Cl',       uncertainPred.Cl?.toFixed(4)],
-                    ['Cd',       uncertainPred.Cd?.toFixed(5)],
-                    ['Cl ±',     uncertainPred.Cl_std ? `±${uncertainPred.Cl_std.toFixed(4)}` : '—'],
-                    ['Cd ±',     uncertainPred.Cd_std ? `±${uncertainPred.Cd_std.toFixed(5)}` : '—'],
-                    ['Eff.',     uncertainPred.efficiency?.toFixed(2)],
-                    ['UCB score',uncertainPred.acquisition_score?.toFixed(3)],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex justify-between items-baseline">
-                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>{k}</span>
-                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.74rem', color: '#dde2ed' }}>{v ?? '—'}</span>
-                    </div>
-                  ))}
-                </div>
-                {uncertainPred.notes?.length > 0 && (
-                  <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.72rem', color: '#636880', lineHeight: 1.55, borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
-                    {uncertainPred.notes[0]}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* vs Baseline comparison */}
-          {metrics?.vs_baseline && (
-            <div className="card p-5 animate-slide-up">
-              <div className="flex items-center gap-1 mb-4">
-                <span className="label">vs Baseline wing</span>
-                <InfoTooltip text="Comparison against the stock NACA 4412 inverted baseline. Green = improvement, red = worse." />
-              </div>
-              {[
-                { key: 'downforce_pct',  label: 'Downforce', tip: 'More is better — higher = more grip' },
-                { key: 'drag_pct',       label: 'Drag',      tip: 'Less is better — lower = more top speed' },
-                { key: 'efficiency_pct', label: 'Efficiency', tip: 'More is better — the key metric' },
-              ].map(({ key, label, tip }) => {
-                const v = metrics.vs_baseline[key]
-                const pos = v > 0
-                const color = pos ? 'var(--phosphor)' : 'var(--signal)'
-                return (
-                  <div key={key} className="mb-3 last:mb-0">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1">
-                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: '#636880', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          {label}
-                        </span>
-                        <InfoTooltip text={tip} />
-                      </div>
-                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', fontWeight: 600, color }}>
-                        {pos ? '+' : ''}{v?.toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="progress-track">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${Math.min(Math.abs(v), 100)}%`,
-                          marginLeft: pos ? 0 : `${100 - Math.min(Math.abs(v), 100)}%`,
-                          background: color,
-                          boxShadow: `0 0 8px ${color}`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── 3D VLM Results ─────────────────────────────────────────────────── */}
-      {result3d && <VLMResultPanel result={result3d} params3d={params3d} />}
-    </div>
+      {/* Error toast */}
+      <ErrorToast error={error} onDismiss={() => setError('')} />
+    </>
   )
+
+  return createPortal(experience, document.body)
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VLMResultPanel — full 3D analysis output
-// ─────────────────────────────────────────────────────────────────────────────
-function VLMResultPanel({ result, params3d }) {
-  const a = result?.analysis
-  if (!a) return null
-
-  const span = a.spanwise || {}
-  const etaArr = span.eta || []
-  const clArr  = span.cl_strip || []
-  const cdiArr = span.cdi_strip || []
-
-  const spanData = etaArr.map((eta, i) => ({
-    eta: eta.toFixed(2),
-    cl:  parseFloat((clArr[i] || 0).toFixed(4)),
-    cdi: parseFloat((cdiArr[i] || 0).toFixed(5)),
-  }))
-
-  const pr = a.pressure || {}
-  const cpArr = pr.cp || []
-  const yArr  = pr.panel_y || []
-  const cpData = yArr.map((y, i) => ({
-    y:  parseFloat(y.toFixed(3)),
-    cp: parseFloat((cpArr[i] || 0).toFixed(4)),
-  })).sort((a, b) => a.y - b.y)
-
-  return (
-    <div className="card card-glow-green animate-slide-up mt-5 p-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <div style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: 'rgba(57,255,136,0.08)',
-          border: '1px solid rgba(57,255,136,0.20)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Box size={15} style={{ color: 'var(--phosphor)' }} />
-        </div>
-        <div>
-          <h3 style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: '0.95rem', color: '#fff', margin: 0 }}>
-            3D Vortex Lattice Analysis
-          </h3>
-          <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.62rem', color: '#636880' }}>
-            {a.n_panels} panels · taper {params3d.taper_ratio} · sweep {params3d.sweep_deg}° · h={params3d.ride_height_pct}%c
-          </span>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <span className={`badge ${a.converged ? 'badge-green' : 'badge-red'}`}>
-            {a.converged ? 'CONVERGED' : 'FAILED'}
-          </span>
-          {a.ground_effect_factor > 1.05 && (
-            <span className="badge badge-amber" style={{ fontSize: '0.62rem' }}>
-              GROUND EFFECT ×{a.ground_effect_factor.toFixed(3)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* KPI row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5 stagger">
-        {[
-          { label: 'CL (3D)',        value: a.CL?.toFixed(4),              color: 'green' },
-          { label: 'CD induced',     value: a.CD_induced?.toFixed(5),      color: 'amber' },
-          { label: 'Downforce',      value: `${a.downforce_N?.toFixed(0)} N`, color: 'blue' },
-          { label: 'Drag',           value: `${a.drag_N?.toFixed(1)} N`,    color: 'amber' },
-          { label: 'Efficiency',     value: a.efficiency?.toFixed(2),       color: 'green' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="metric-card">
-            <div className="metric-label">{label}</div>
-            <div style={{
-              fontFamily: 'JetBrains Mono,monospace', fontWeight: 700, fontSize: '1rem',
-              color: color === 'green' ? 'var(--phosphor)'
-                   : color === 'amber' ? 'var(--ember)'
-                   : 'var(--arc)',
-            }}>
-              {value ?? '—'}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-        {/* Spanwise Cl distribution */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="label">Spanwise Cl distribution</span>
-            <InfoTooltip
-              text="Local section lift coefficient (Cl) as it varies from wing root (η=−1) to tip (η=+1). Elliptical distribution minimises induced drag. Taper and twist shape this curve."
-              wide
-            />
-          </div>
-          {spanData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={spanData} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="clGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#39ff88" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#39ff88" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 4" />
-                <XAxis dataKey="eta" tickFormatter={v => `η${v}`} tick={{ fontSize: 9 }} />
-                <YAxis tick={{ fontSize: 9 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area dataKey="cl" stroke="var(--phosphor)" strokeWidth={2}
-                  fill="url(#clGrad)" dot={false} name="Cl strip" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.7rem', color: '#3e4257' }}>
-                No spanwise data
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Spanwise Cdi + ground effect info */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="label">Induced drag distribution</span>
-            <InfoTooltip
-              text="Local induced drag coefficient at each spanwise strip. Tip vortices cause drag to peak near the tips — endplates suppress this."
-              wide
-            />
-          </div>
-          {spanData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={spanData} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="cdiGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#ffb020" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#ffb020" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 4" />
-                <XAxis dataKey="eta" tickFormatter={v => `η${v}`} tick={{ fontSize: 9 }} />
-                <YAxis tick={{ fontSize: 9 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area dataKey="cdi" stroke="var(--ember)" strokeWidth={2}
-                  fill="url(#cdiGrad)" dot={false} name="Cdi strip" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.7rem', color: '#3e4257' }}>
-                No data
-              </span>
-            </div>
-          )}
-
-          {/* Ground effect callout */}
-          {a.ground_effect_factor !== undefined && (
-            <div style={{
-              marginTop: 12, padding: '10px 14px', borderRadius: 10,
-              background: a.ground_effect_factor > 1.05
-                ? 'rgba(57,255,136,0.05)' : 'rgba(255,255,255,0.03)',
-              border: a.ground_effect_factor > 1.05
-                ? '1px solid rgba(57,255,136,0.18)' : '1px solid rgba(255,255,255,0.07)',
-            }}>
-              <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.65rem', color: '#636880', marginBottom: 3 }}>
-                GROUND EFFECT MULTIPLIER
-              </div>
-              <div style={{
-                fontFamily: 'JetBrains Mono,monospace', fontWeight: 700, fontSize: '1.1rem',
-                color: a.ground_effect_factor > 1.05 ? 'var(--phosphor)' : '#636880',
-              }}>
-                ×{a.ground_effect_factor.toFixed(4)}
-              </div>
-              <div style={{ fontFamily: 'Outfit,sans-serif', fontSize: '0.72rem', color: '#a8b2c8', marginTop: 3 }}>
-                {a.ground_effect_factor > 1.10
-                  ? `Wing produces ${((a.ground_effect_factor - 1) * 100).toFixed(1)}% more downforce due to ground proximity`
-                  : a.ground_effect_factor > 1.02
-                  ? 'Mild ground effect active — lower ride height increases this'
-                  : 'Minimal ground effect at current ride height'}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Condition number warning */}
-      {a.condition_number > 1e6 && (
-        <div style={{
-          marginTop: 12, padding: '8px 14px', borderRadius: 8,
-          background: 'rgba(255,61,90,0.05)', border: '1px solid rgba(255,61,90,0.15)',
-          fontFamily: 'Outfit,sans-serif', fontSize: '0.75rem', color: '#d4506a',
-        }}>
-          ⚠ AIC matrix condition number {a.condition_number.toExponential(2)} — results may be less accurate for this geometry combination.
-        </div>
-      )}
-    </div>
-  )
-}
-

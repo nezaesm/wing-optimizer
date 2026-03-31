@@ -116,11 +116,11 @@ export default function OptimizePage() {
           <button key={m.id} onClick={() => setMode(m.id)} style={{
             display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
             padding: '8px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-            background: mode === m.id ? 'rgba(0,200,255,0.10)' : 'rgba(255,255,255,0.04)',
+            background: mode === m.id ? 'rgba(139,92,246,0.10)' : 'rgba(255,255,255,0.04)',
             borderLeft: `2px solid ${mode === m.id ? 'var(--arc)' : 'transparent'}`,
             transition: 'all 0.15s',
           }}>
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem', fontWeight: 600, color: mode === m.id ? 'var(--arc)' : '#dde2ed' }}>{m.label}</span>
+            <span style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: '0.82rem', fontWeight: 600, color: mode === m.id ? 'var(--arc)' : '#dde2ed' }}>{m.label}</span>
             <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: '#636880' }}>{m.sub}</span>
           </button>
         ))}
@@ -199,7 +199,7 @@ export default function OptimizePage() {
 
         <div className="flex items-center justify-between mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <FidelityBadge level={mode === 'hybrid' ? 1 : 0} label={mode === 'hybrid' ? 'Hybrid L0→L1' : 'L0 Surrogate'} />
-          <button onClick={runOptimize} disabled={loading} className="btn-primary">
+          <button onClick={runOptimize} disabled={loading} className="btn-primary" data-magnetic>
             {loading ? <Spinner size={14} /> : <Play size={14} />}
             {loading ? 'Optimising…' : mode === 'hybrid' ? 'Run Hybrid Pipeline' : 'Run NSGA-II'}
           </button>

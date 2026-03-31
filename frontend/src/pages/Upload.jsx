@@ -139,7 +139,7 @@ export default function UploadPage() {
           gap: 14,
           cursor: 'pointer',
           background: dragging
-            ? 'rgba(0,200,255,0.05)'
+            ? 'rgba(139,92,246,0.05)'
             : 'rgba(14,15,23,0.6)',
           transition: 'all 0.2s ease',
           marginBottom: 24,
@@ -156,7 +156,7 @@ export default function UploadPage() {
         {uploading ? (
           <>
             <Spinner size={32} className="text-neon-blue" />
-            <span style={{ fontFamily: 'Outfit,sans-serif', color: '#a8b2c8' }}>
+            <span style={{ fontFamily: '"Plus Jakarta Sans",sans-serif', color: '#a8b2c8' }}>
               Parsing geometry…
             </span>
           </>
@@ -164,8 +164,8 @@ export default function UploadPage() {
           <>
             <div style={{
               width: 56, height: 56, borderRadius: 14,
-              background: 'rgba(0,200,255,0.08)',
-              border: '1px solid rgba(0,200,255,0.20)',
+              background: 'rgba(139,92,246,0.08)',
+              border: '1px solid rgba(139,92,246,0.20)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <Upload size={24} style={{ color: 'var(--arc)' }} />
@@ -178,7 +178,7 @@ export default function UploadPage() {
                 Drop a geometry file here
               </p>
               <p style={{
-                fontFamily: 'Outfit,sans-serif', fontSize: '0.82rem',
+                fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.82rem',
                 color: '#636880', marginTop: 4,
               }}>
                 or click to browse — .dat .csv .json .stl .obj
@@ -213,7 +213,7 @@ export default function UploadPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '12px 16px',
-              background: expandedFmt === i ? 'rgba(0,200,255,0.04)' : 'transparent',
+              background: expandedFmt === i ? 'rgba(139,92,246,0.04)' : 'transparent',
               transition: 'background 0.15s',
             }}>
               <span style={{
@@ -221,7 +221,7 @@ export default function UploadPage() {
                 color: 'var(--arc)', minWidth: 90, flexShrink: 0,
               }}>{fmt.ext}</span>
               <span style={{
-                fontFamily: 'Outfit,sans-serif', fontWeight: 500,
+                fontFamily: '"Plus Jakarta Sans",sans-serif', fontWeight: 500,
                 fontSize: '0.88rem', color: '#dde2ed', flex: 1,
               }}>{fmt.label}</span>
               <ChevronRight
@@ -236,7 +236,7 @@ export default function UploadPage() {
             {expandedFmt === i && (
               <div style={{
                 padding: '0 16px 14px 118px',
-                fontFamily: 'Outfit,sans-serif', fontSize: '0.82rem',
+                fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.82rem',
                 color: '#a8b2c8', lineHeight: 1.6,
               }}>
                 {fmt.desc}
@@ -272,7 +272,7 @@ export default function UploadPage() {
       {loadingList ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0' }}>
           <Spinner size={16} />
-          <span style={{ fontFamily: 'Outfit,sans-serif', fontSize: '0.85rem', color: '#636880' }}>
+          <span style={{ fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.85rem', color: '#636880' }}>
             Loading…
           </span>
         </div>
@@ -280,7 +280,7 @@ export default function UploadPage() {
         <div className="card-sm" style={{ padding: '28px 20px', textAlign: 'center' }}>
           <FileText size={24} style={{ color: '#3e4257', margin: '0 auto 10px' }} />
           <p style={{
-            fontFamily: 'Outfit,sans-serif', fontSize: '0.85rem',
+            fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.85rem',
             color: '#636880', margin: 0,
           }}>
             No uploads yet — drop a file above to get started.
@@ -341,6 +341,7 @@ function ParseResult({ result, onLoad }) {
         <button
           onClick={() => onLoad(params)}
           className="btn-primary"
+          data-magnetic
           style={{ padding: '8px 18px', fontSize: '0.82rem', whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           Load into Design →
@@ -359,7 +360,7 @@ function ParseResult({ result, onLoad }) {
           {warns.map((w, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <AlertTriangle size={12} style={{ color: 'var(--ember)', flexShrink: 0, marginTop: 2 }} />
-              <span style={{ fontFamily: 'Outfit,sans-serif', fontSize: '0.78rem', color: '#d4a84b' }}>{w}</span>
+              <span style={{ fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.78rem', color: '#d4a84b' }}>{w}</span>
             </div>
           ))}
         </div>
@@ -381,7 +382,7 @@ function ParseResult({ result, onLoad }) {
                   border: '1px solid rgba(255,255,255,0.05)',
                 }}
               >
-                <span style={{ fontFamily: 'Outfit,sans-serif', fontSize: '0.8rem', color: '#a8b2c8' }}>
+                <span style={{ fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.8rem', color: '#a8b2c8' }}>
                   {label}
                 </span>
                 <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: '0.8rem', color: '#fff' }}>
@@ -453,7 +454,7 @@ function UploadRow({ upload, onLoad, onDelete }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
-              fontFamily: 'Outfit,sans-serif', fontWeight: 500, fontSize: '0.85rem',
+              fontFamily: '"Plus Jakarta Sans",sans-serif', fontWeight: 500, fontSize: '0.85rem',
               color: '#dde2ed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {upload.filename}
@@ -475,6 +476,7 @@ function UploadRow({ upload, onLoad, onDelete }) {
         <button
           onClick={e => { e.stopPropagation(); onLoad() }}
           className="btn-secondary"
+          data-magnetic
           style={{ padding: '5px 12px', fontSize: '0.75rem', flexShrink: 0 }}
         >
           Load
@@ -542,7 +544,7 @@ function UploadRow({ upload, onLoad, onDelete }) {
               {upload.warnings.map((w, i) => (
                 <div key={i} style={{
                   display: 'flex', gap: 6, alignItems: 'flex-start',
-                  fontFamily: 'Outfit,sans-serif', fontSize: '0.75rem', color: '#d4a84b',
+                  fontFamily: '"Plus Jakarta Sans",sans-serif', fontSize: '0.75rem', color: '#d4a84b',
                   marginTop: 3,
                 }}>
                   <AlertTriangle size={11} style={{ flexShrink: 0, marginTop: 2 }} />

@@ -1,603 +1,567 @@
-// src/pages/Intro.jsx
-import React, { useState, useEffect } from 'react'
+// Intro.jsx — scramble title reveal + cursor warp + Enter key navigation
+import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+import { WaveBackground } from '../components/WaveBackground'
 
-const STATS = [
-  { value: '+41.8%', label: 'Efficiency gain' },
-  { value: 'R²=0.99', label: 'Surrogate accuracy' },
-  { value: '1000×', label: 'Faster than physics' },
-]
+const TITLE_TEXT   = 'WINGOPT'
+const SCRAMBLE_CHARS = '_!X$0-+*#'
+const SCRAMBLE_SPEED = 55 // ms per tick — slower, readable reveal
 
-const LETTERS = 'WINGOPT'.split('')
+function randomChar(prev) {
+  let c
+  do { c = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)] }
+  while (c === prev)
+  return c
+}
 
+// ── Streamlines data ──────────────────────────────────────────────────────────
 const STREAMLINES = [
-  // [y, controlY1, controlY2, opacity]  — above wing
-  [28,  22,  18, 0.18],
-  [46,  36,  28, 0.28],
-  [62,  48,  36, 0.42],
-  [76,  56,  40, 0.60],
-  [88,  62,  44, 0.80],  // closest to upper surface
-  // below wing
-  [122, 128, 130, 0.70],
-  [136, 140, 142, 0.50],
-  [150, 152, 154, 0.34],
-  [164, 165, 166, 0.22],
-  [178, 178, 178, 0.14],
+  { d: 'M -40 72  C 160 55,  380 48,  640 68  S 900 70,  880 72',  w: 0.8, op: 0.14 },
+  { d: 'M -40 88  C 160 68,  380 58,  640 82  S 900 85,  880 88',  w: 1.0, op: 0.24 },
+  { d: 'M -40 102 C 160 80,  380 68,  640 94  S 900 98,  880 102', w: 1.2, op: 0.36 },
+  { d: 'M -40 115 C 160 92,  380 78,  640 104 S 900 110, 880 115', w: 1.4, op: 0.50 },
+  { d: 'M -40 126 C 160 102, 380 88,  640 114 S 900 120, 880 126', w: 1.0, op: 0.55 },
+  { d: 'M -40 142 C 160 148, 380 145, 640 143 S 900 142, 880 142', w: 1.0, op: 0.44 },
+  { d: 'M -40 155 C 160 158, 380 156, 640 155 S 900 155, 880 155', w: 0.8, op: 0.28 },
+  { d: 'M -40 168 C 160 170, 380 169, 640 168 S 900 168, 880 168', w: 0.7, op: 0.16 },
+  { d: 'M -40 180 C 160 181, 380 180, 640 180 S 900 180, 880 180', w: 0.6, op: 0.08 },
 ]
 
-export default function IntroPage({ onEnter }) {
-  const [exiting, setExiting] = useState(false)
-  const [showStats, setShowStats] = useState(false)
-  const [showTitle, setShowTitle] = useState(false)
-  const [showBy, setShowBy] = useState(false)
-  const [showCta, setShowCta] = useState(false)
+// ── Wing SVG — white/silver palette, no glow filters ─────────────────────────
+function StreamlineSVG() {
+  return (
+    <svg
+      viewBox="0 0 840 210"
+      style={{ width: '100%', maxWidth: '680px', overflow: 'visible', display: 'block' }}
+    >
+      <defs>
+        <linearGradient id="slGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0" />
+          <stop offset="20%"  stopColor="#cccccc" stopOpacity="0.55" />
+          <stop offset="70%"  stopColor="#aaaaaa" stopOpacity="0.40" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="wGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.95" />
+          <stop offset="50%"  stopColor="#dddddd" stopOpacity="0.70" />
+          <stop offset="100%" stopColor="#999999" stopOpacity="0.12" />
+        </linearGradient>
+        <linearGradient id="wFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor="#ffffff" stopOpacity="0.04" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+
+      {STREAMLINES.map((sl, i) => (
+        <motion.path
+          key={i}
+          d={sl.d}
+          stroke="url(#slGrad)"
+          strokeWidth={sl.w}
+          fill="none"
+          strokeLinecap="round"
+          opacity={sl.op}
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.6, delay: 0.14 + i * 0.08, ease: [0.23, 1, 0.32, 1] }}
+        />
+      ))}
+
+      {/* Wing body fill */}
+      <motion.path
+        d="M 55 133 C 200 72, 460 56, 780 108 L 780 116 C 460 88, 200 140, 55 133 Z"
+        fill="url(#wFill)"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.0, delay: 0.5 }}
+      />
+
+      {/* Leading edge */}
+      <motion.path
+        d="M 55 133 C 200 72, 460 56, 780 108"
+        fill="none" stroke="url(#wGrad)" strokeWidth="1.5" strokeLinecap="round"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 1.3, delay: 0.12, ease: [0.23, 1, 0.32, 1] }}
+      />
+
+      {/* Trailing edge */}
+      <motion.path
+        d="M 55 133 C 200 150, 460 140, 780 116"
+        fill="none" stroke="url(#wGrad)" strokeWidth="0.9" strokeLinecap="round" opacity={0.35}
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 1.3, delay: 0.22, ease: [0.23, 1, 0.32, 1] }}
+      />
+
+      {/* TE flap micro-detail */}
+      <motion.path
+        d="M 680 112 C 730 116, 760 124, 755 132 C 720 128, 690 120, 680 112 Z"
+        fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.16)" strokeWidth="0.8"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 1 }}
+        transition={{ duration: 0.6, delay: 1.2 }}
+      />
+
+      {/* Leading-edge dot */}
+      <motion.circle
+        cx="55" cy="133" r="2.5" fill="#ffffff" opacity={0.85}
+        initial={{ opacity: 0, scale: 0 }}
+        animate={{ opacity: 0.85, scale: 1 }}
+        transition={{ duration: 0.4, delay: 0.14, ease: [0.23, 1, 0.32, 1] }}
+      />
+    </svg>
+  )
+}
+
+// ── Wing 3D parallax ──────────────────────────────────────────────────────────
+function WingSection({ mx, my }) {
+  const x       = useSpring(useTransform(mx, v => v * 0.016), { stiffness: 88, damping: 22, mass: 0.8 })
+  const y       = useSpring(useTransform(my, v => v * 0.011), { stiffness: 88, damping: 22, mass: 0.8 })
+  const rotateY = useSpring(useTransform(mx, v => v * 0.004), { stiffness: 88, damping: 22 })
+  const rotateX = useSpring(useTransform(my, v => -v * 0.003), { stiffness: 88, damping: 22 })
+  return (
+    <motion.div style={{ x, y, rotateX, rotateY, transformPerspective: 1400, marginBottom: '4px', width: '100%', display: 'flex', justifyContent: 'center' }}>
+      <StreamlineSVG />
+    </motion.div>
+  )
+}
+
+// ── Per-character warp + color wave ──────────────────────────────────────────
+// During scramble: dim gray. After warp active: flowing white→dark→white wave
+// staggered by charIndex so the gradient sweeps left→right continuously.
+function WarpChar({ displayChar, warpActive, charIndex, offsetX, titleCenterY, mx, my }) {
+  const txMv = useMotionValue(0)
+  const tyMv = useMotionValue(0)
+  const x = useSpring(txMv, { stiffness: 265, damping: 24, mass: 0.48 })
+  const y = useSpring(tyMv, { stiffness: 265, damping: 24, mass: 0.48 })
 
   useEffect(() => {
-    const t1 = setTimeout(() => setShowTitle(true), 1400)
-    const t2 = setTimeout(() => setShowStats(true), 2200)
-    const t3 = setTimeout(() => setShowBy(true),    2800)
-    const t4 = setTimeout(() => setShowCta(true),   3400)
-    return () => [t1,t2,t3,t4].forEach(clearTimeout)
-  }, [])
-
-  const handleEnter = () => {
-    setExiting(true)
-    setTimeout(onEnter, 900)
-  }
+    if (!warpActive) return
+    const RADIUS = 145
+    const update = () => {
+      const dx   = mx.get() - offsetX
+      const dy   = my.get() - titleCenterY
+      const dist = Math.hypot(dx, dy)
+      if (dist < RADIUS && dist > 0.5) {
+        const force = (1 - dist / RADIUS) * 19
+        txMv.set(-(dx / dist) * force)
+        tyMv.set(-(dy / dist) * force)
+      } else {
+        txMv.set(0)
+        tyMv.set(0)
+      }
+    }
+    const u1 = mx.on('change', update)
+    const u2 = my.on('change', update)
+    return () => { u1(); u2() }
+  }, [warpActive, offsetX, titleCenterY, mx, my, txMv, tyMv])
 
   return (
-    <>
-      <style>{`
-        /* ── Intro base ── */
-        .intro-wrap {
-          position: fixed; inset: 0; z-index: 9999;
-          background: #06060a;
-          display: flex; flex-direction: column;
-          align-items: center; justify-content: center;
-          overflow: hidden;
-          transition: opacity 0.9s cubic-bezier(0.4,0,0.2,1), transform 0.9s cubic-bezier(0.4,0,0.2,1);
-        }
-        .intro-wrap.exit {
-          opacity: 0;
-          transform: scale(1.04);
-        }
+    <motion.span
+      custom={charIndex}
+      variants={{
+        scramble: { color: 'rgba(140, 140, 140, 0.65)' },
+        warp: (i) => ({
+          color: ['#f0f0f0', '#3a3a3a', '#f0f0f0'],
+          transition: {
+            duration: 5,
+            repeat: Infinity,
+            repeatType: 'loop',
+            delay: i * 0.16,
+            ease: 'easeInOut',
+          },
+        }),
+      }}
+      animate={warpActive ? 'warp' : 'scramble'}
+      style={{ x, y, display: 'inline-block' }}
+    >
+      {displayChar}
+    </motion.span>
+  )
+}
 
-        /* ── Ambient background orbs ── */
-        .orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          pointer-events: none;
-        }
-        .orb-1 {
-          width: 700px; height: 400px;
-          top: -120px; left: 50%;
-          transform: translateX(-50%);
-          background: radial-gradient(ellipse, rgba(0,200,255,0.12) 0%, transparent 70%);
-          animation: orbDrift1 12s ease-in-out infinite;
-        }
-        .orb-2 {
-          width: 500px; height: 300px;
-          bottom: -80px; right: -100px;
-          background: radial-gradient(ellipse, rgba(0,229,204,0.08) 0%, transparent 70%);
-          animation: orbDrift2 15s ease-in-out infinite;
-        }
-        .orb-3 {
-          width: 400px; height: 250px;
-          bottom: 60px; left: -80px;
-          background: radial-gradient(ellipse, rgba(57,255,136,0.05) 0%, transparent 70%);
-          animation: orbDrift3 18s ease-in-out infinite;
-        }
-        @keyframes orbDrift1 {
-          0%,100% { transform: translateX(-50%) translateY(0); }
-          50%      { transform: translateX(-50%) translateY(20px); }
-        }
-        @keyframes orbDrift2 {
-          0%,100% { transform: translateY(0) translateX(0); }
-          50%      { transform: translateY(-30px) translateX(-20px); }
-        }
-        @keyframes orbDrift3 {
-          0%,100% { transform: translateY(0); }
-          50%      { transform: translateY(25px); }
-        }
+// ── Title: scramble reveal → cursor warp ─────────────────────────────────────
+function WarpTitle({ mx, my, onDone }) {
+  const titleRef    = useRef(null)
+  const intervalRef = useRef(null)
+  const stepRef     = useRef(0)
 
-        /* ── Grid lines ── */
-        .intro-grid {
-          position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
-          -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 0%, transparent 100%);
-          mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 0%, transparent 100%);
-        }
+  const [phase, setPhase]               = useState('idle')
+  const [warpActive, setWarpActive]     = useState(false)
+  const [displayChars, setDisplayChars] = useState(() => Array(TITLE_TEXT.length).fill('\u00A0'))
+  const [charData, setCharData]         = useState(() =>
+    TITLE_TEXT.split('').map(char => ({ char, offsetX: 0, titleCenterY: 0 }))
+  )
 
-        /* ── Wing SVG animations ── */
-        .wing-upper {
-          stroke-dasharray: 1600;
-          stroke-dashoffset: 1600;
-          animation: drawWing 1.8s cubic-bezier(0.4,0,0.2,1) 0.3s forwards;
-        }
-        .wing-lower {
-          stroke-dasharray: 1600;
-          stroke-dashoffset: 1600;
-          animation: drawWing 1.8s cubic-bezier(0.4,0,0.2,1) 0.5s forwards;
-        }
-        .wing-fill {
-          opacity: 0;
-          animation: fadeInFill 1.2s ease 1.4s forwards;
-        }
-        .wing-camber {
-          stroke-dasharray: 900;
-          stroke-dashoffset: 900;
-          animation: drawWing 1.4s ease 1.0s forwards;
-        }
-        @keyframes drawWing {
-          to { stroke-dashoffset: 0; }
-        }
-        @keyframes fadeInFill {
-          to { opacity: 1; }
-        }
+  useEffect(() => {
+    const t = setTimeout(() => setPhase('phase1'), 320)
+    return () => clearTimeout(t)
+  }, [])
 
-        /* ── Streamlines ── */
-        .streamline {
-          stroke-dasharray: 900;
-          stroke-dashoffset: 900;
-        }
-        .sl-0 { animation: streamFlow 1.4s ease 0.9s forwards; }
-        .sl-1 { animation: streamFlow 1.4s ease 1.0s forwards; }
-        .sl-2 { animation: streamFlow 1.4s ease 1.1s forwards; }
-        .sl-3 { animation: streamFlow 1.4s ease 1.2s forwards; }
-        .sl-4 { animation: streamFlow 1.3s ease 1.3s forwards; }
-        .sl-5 { animation: streamFlow 1.4s ease 1.2s forwards; }
-        .sl-6 { animation: streamFlow 1.4s ease 1.1s forwards; }
-        .sl-7 { animation: streamFlow 1.4s ease 1.0s forwards; }
-        .sl-8 { animation: streamFlow 1.4s ease 0.95s forwards; }
-        .sl-9 { animation: streamFlow 1.4s ease 0.9s forwards; }
-        @keyframes streamFlow {
-          to { stroke-dashoffset: 0; }
-        }
+  // Phase 1: grow random chars left-to-right
+  useEffect(() => {
+    if (phase !== 'phase1') return
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    stepRef.current = 0
+    const maxSteps = TITLE_TEXT.length * 2
 
-        /* ── LE glow dot ── */
-        .le-dot {
-          opacity: 0;
-          animation: leDot 0.6s ease 0.2s forwards;
-          filter: drop-shadow(0 0 8px #00c8ff);
-        }
-        @keyframes leDot {
-          0%  { opacity: 0; r: 2; }
-          50% { opacity: 1; r: 6; }
-          100%{ opacity: 0.8; r: 3; }
-        }
+    intervalRef.current = setInterval(() => {
+      const step = stepRef.current
+      const len  = Math.min(step + 1, TITLE_TEXT.length)
+      const chars = []
+      for (let i = 0; i < len; i++) chars.push(randomChar(i > 0 ? chars[i - 1] : undefined))
+      while (chars.length < TITLE_TEXT.length) chars.push('\u00A0')
+      setDisplayChars([...chars])
+      stepRef.current += 1
+      if (stepRef.current >= maxSteps) { clearInterval(intervalRef.current); setPhase('phase2') }
+    }, SCRAMBLE_SPEED)
 
-        /* ── Title letters ── */
-        .intro-letter {
-          display: inline-block;
-          opacity: 0;
-          transform: translateY(30px) scale(0.8);
-          animation: letterReveal 0.6s cubic-bezier(0.16,1,0.3,1) forwards;
-        }
-        @keyframes letterReveal {
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
+    return () => clearInterval(intervalRef.current)
+  }, [phase])
 
-        /* ── Fade up elements ── */
-        .fade-up {
-          opacity: 0;
-          transform: translateY(16px);
-          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) forwards;
-        }
-        @keyframes fadeUp {
-          to { opacity: 1; transform: translateY(0); }
-        }
+  // Phase 2: reveal chars left-to-right with flicker
+  useEffect(() => {
+    if (phase !== 'phase2') return
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    stepRef.current = 0
 
-        /* ── Stats ── */
-        .stat-item {
-          opacity: 0;
-          transform: translateY(10px);
-          animation: fadeUp 0.5s cubic-bezier(0.16,1,0.3,1) forwards;
-        }
+    intervalRef.current = setInterval(() => {
+      const step     = stepRef.current
+      const revealed = Math.floor(step / 2)
+      const chars    = []
+      for (let i = 0; i < revealed && i < TITLE_TEXT.length; i++) chars.push(TITLE_TEXT[i])
+      if (revealed < TITLE_TEXT.length) chars.push(step % 2 === 0 ? '_' : randomChar())
+      while (chars.length < TITLE_TEXT.length) chars.push(randomChar())
+      setDisplayChars([...chars])
+      stepRef.current += 1
+      if (stepRef.current >= TITLE_TEXT.length * 2) {
+        clearInterval(intervalRef.current)
+        setDisplayChars(TITLE_TEXT.split(''))
+        setPhase('warp')
+      }
+    }, SCRAMBLE_SPEED)
 
-        /* ── CTA button ── */
-        .intro-cta {
-          position: relative;
-          padding: 14px 48px;
-          border-radius: 50px;
-          border: none;
-          cursor: pointer;
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 1rem;
-          letter-spacing: 0.06em;
-          color: #06060a;
-          background: linear-gradient(135deg, #00c8ff 0%, #00e5cc 100%);
-          box-shadow: 0 0 40px rgba(0,200,255,0.35), 0 4px 20px rgba(0,200,255,0.25);
-          transition: transform 0.3s cubic-bezier(0.23,1,0.32,1), box-shadow 0.3s ease;
-          animation: ctaPulse 2.5s ease-in-out infinite;
-        }
-        .intro-cta:hover {
-          transform: translateY(-3px) scale(1.04);
-          box-shadow: 0 0 60px rgba(0,200,255,0.55), 0 8px 32px rgba(0,200,255,0.35);
-          animation: none;
-        }
-        .intro-cta::before {
-          content: '';
-          position: absolute; inset: -2px;
-          border-radius: 52px;
-          background: linear-gradient(135deg, #00c8ff, #00e5cc, #39ff88, #00c8ff);
-          background-size: 300% 300%;
-          z-index: -1;
-          filter: blur(8px);
-          opacity: 0.6;
-          animation: borderSpin 4s linear infinite;
-        }
-        @keyframes ctaPulse {
-          0%,100% { box-shadow: 0 0 40px rgba(0,200,255,0.35), 0 4px 20px rgba(0,200,255,0.25); }
-          50%      { box-shadow: 0 0 60px rgba(0,200,255,0.55), 0 4px 28px rgba(0,200,255,0.35); }
-        }
-        @keyframes borderSpin {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
+    return () => clearInterval(intervalRef.current)
+  }, [phase])
 
-        /* ── Scan line ── */
-        .intro-scanline {
-          position: absolute; inset: 0; pointer-events: none;
-          background: repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 3px,
-            rgba(0,0,0,0.08) 3px,
-            rgba(0,0,0,0.08) 4px
-          );
-        }
+  // Measure char positions with pretext → activate spring warp
+  useEffect(() => {
+    if (phase !== 'warp') return
+    document.fonts.ready.then(() => {
+      if (!titleRef.current) return
+      const rect         = titleRef.current.getBoundingClientRect()
+      const titleCenterY = rect.top + rect.height / 2 - window.innerHeight / 2
+      const fs           = Math.min(Math.max(48, window.innerWidth * 0.12), 112)
+      const font         = `700 ${fs}px "JetBrains Mono", monospace`
+      let cumX = 0
+      const measured = TITLE_TEXT.split('').map(char => {
+        const prepared   = prepareWithSegments(char, font)
+        const { lines }  = layoutWithLines(prepared, 4000, fs * 1.25)
+        const w          = lines[0]?.width ?? fs * 0.6
+        const item       = { char, w, cumX }
+        cumX += w
+        return item
+      })
+      const totalW    = cumX
+      const titleLeft = rect.left + rect.width / 2 - totalW / 2
+      setCharData(measured.map(d => ({
+        char:         d.char,
+        offsetX:      titleLeft + d.cumX + d.w / 2 - window.innerWidth / 2,
+        titleCenterY,
+      })))
+      setWarpActive(true)
+      onDone?.()
+    })
+  }, [phase, onDone])
 
-        /* ── Corner decorations ── */
-        .corner {
-          position: absolute;
-          width: 40px; height: 40px;
-          opacity: 0.3;
-        }
-        .corner-tl { top: 24px; left: 24px; border-top: 1px solid var(--arc); border-left: 1px solid var(--arc); }
-        .corner-tr { top: 24px; right: 24px; border-top: 1px solid var(--arc); border-right: 1px solid var(--arc); }
-        .corner-bl { bottom: 24px; left: 24px; border-bottom: 1px solid var(--arc); border-left: 1px solid var(--arc); }
-        .corner-br { bottom: 24px; right: 24px; border-bottom: 1px solid var(--arc); border-right: 1px solid var(--arc); }
+  return (
+    <motion.div
+      ref={titleRef}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.25, delay: 0.18 }}
+      style={{
+        display:        'flex',
+        justifyContent: 'center',
+        fontFamily:     '"JetBrains Mono", monospace',
+        fontWeight:     700,
+        fontSize:       'clamp(3rem, 12vw, 7rem)',
+        letterSpacing:  '0.04em',
+        lineHeight:     1,
+        marginBottom:   '10px',
+        whiteSpace:     'nowrap',
+        userSelect:     'none',
+      }}
+    >
+      {charData.map((d, i) => (
+        <WarpChar
+          key={i}
+          charIndex={i}
+          displayChar={displayChars[i] ?? d.char}
+          warpActive={warpActive}
+          offsetX={d.offsetX}
+          titleCenterY={d.titleCenterY}
+          mx={mx}
+          my={my}
+        />
+      ))}
+    </motion.div>
+  )
+}
 
-        /* ── Bottom ticker ── */
-        @keyframes tickerScroll {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-      `}</style>
+// ── Live mouse position readout — isolated component, re-renders itself only ──
+function MouseReadout({ mx, my, visible }) {
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+  useEffect(() => {
+    const update = () => setPos({
+      x: Math.round(mx.get() + window.innerWidth  / 2),
+      y: Math.round(my.get() + window.innerHeight / 2),
+    })
+    const u1 = mx.on('change', update)
+    const u2 = my.on('change', update)
+    return () => { u1(); u2() }
+  }, [mx, my])
 
-      <div className={`intro-wrap ${exiting ? 'exit' : ''}`}>
+  const fmt = (n) => String(n).padStart(4, '0')
 
-        {/* Scanlines */}
-        <div className="intro-scanline" />
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          style={{
+            position:   'absolute',
+            bottom:     '28px',
+            right:      '24px',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize:   '0.52rem',
+            letterSpacing: '0.12em',
+            color:      'rgba(255,255,255,0.18)',
+            textTransform: 'uppercase',
+            lineHeight: 1.8,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ color: 'rgba(255,255,255,0.10)', marginBottom: '3px' }}>CUR.POS</div>
+          <div>X · {fmt(pos.x)}</div>
+          <div>Y · {fmt(pos.y)}</div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
-        {/* Corner decorations */}
-        <div className="corner corner-tl" />
-        <div className="corner corner-tr" />
-        <div className="corner corner-bl" />
-        <div className="corner corner-br" />
+// ── Small scan-line label above the wing ─────────────────────────────────────
+function SystemTag() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.7, delay: 0.6 }}
+      style={{
+        position:      'absolute',
+        top:           '28px',
+        left:          '50%',
+        transform:     'translateX(-50%)',
+        display:       'flex',
+        alignItems:    'center',
+        gap:           '10px',
+        fontFamily:    'JetBrains Mono, monospace',
+        fontSize:      '0.48rem',
+        letterSpacing: '0.24em',
+        color:         'rgba(255,255,255,0.14)',
+        textTransform: 'uppercase',
+        whiteSpace:    'nowrap',
+        pointerEvents: 'none',
+        userSelect:    'none',
+      }}
+    >
+      <span style={{ display: 'inline-block', width: '24px', height: '1px', background: 'rgba(255,255,255,0.14)' }} />
+      <span>WOPT · AER.SIM · V0.9</span>
+      <span style={{ display: 'inline-block', width: '24px', height: '1px', background: 'rgba(255,255,255,0.14)' }} />
+    </motion.div>
+  )
+}
 
-        {/* Ambient orbs */}
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
+// ── Decorative ticks separator ────────────────────────────────────────────────
+function ScanDivider({ visible }) {
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, scaleX: 0 }}
+          animate={{ opacity: 1, scaleX: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.55, ease: [0.23, 1, 0.32, 1] }}
+          style={{
+            display:       'flex',
+            alignItems:    'center',
+            gap:           '6px',
+            fontFamily:    'JetBrains Mono, monospace',
+            fontSize:      '0.46rem',
+            letterSpacing: '0.16em',
+            color:         'rgba(255,255,255,0.16)',
+            userSelect:    'none',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.16)' }} />
+          <span>◆</span>
+          <span style={{ width: '28px', height: '1px', background: 'rgba(255,255,255,0.10)' }} />
+          <span>· · ·</span>
+          <span style={{ width: '28px', height: '1px', background: 'rgba(255,255,255,0.10)' }} />
+          <span>◆</span>
+          <span style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.16)' }} />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
-        {/* Grid */}
-        <div className="intro-grid" />
+// ── Corner accents ─────────────────────────────────────────────────────────────
+const CORNER_STYLES = [
+  { top: '18px',    left:  '18px',  borderTop: '1px solid rgba(255,255,255,0.10)', borderLeft:   '1px solid rgba(255,255,255,0.10)' },
+  { top: '18px',    right: '18px',  borderTop: '1px solid rgba(255,255,255,0.10)', borderRight:  '1px solid rgba(255,255,255,0.10)' },
+  { bottom: '18px', left:  '18px',  borderBottom: '1px solid rgba(255,255,255,0.10)', borderLeft:  '1px solid rgba(255,255,255,0.10)' },
+  { bottom: '18px', right: '18px',  borderBottom: '1px solid rgba(255,255,255,0.10)', borderRight: '1px solid rgba(255,255,255,0.10)' },
+]
 
-        {/* ── Main content ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px', zIndex: 1, width: '100%', maxWidth: '900px', padding: '0 40px' }}>
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function IntroPage({ onEnter }) {
+  const [ready, setReady] = useState(false)
 
-          {/* Top badge */}
-          <div className="fade-up" style={{ animationDelay: '0.1s', marginBottom: '32px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '5px 14px', borderRadius: '999px',
-              background: 'rgba(0,200,255,0.06)',
-              border: '1px solid rgba(0,200,255,0.18)',
+  const mx = useMotionValue(0)
+  const my = useMotionValue(0)
+
+  useEffect(() => {
+    const onMove = (e) => {
+      mx.set(e.clientX - window.innerWidth  / 2)
+      my.set(e.clientY - window.innerHeight / 2)
+    }
+    window.addEventListener('mousemove', onMove, { passive: true })
+    return () => window.removeEventListener('mousemove', onMove)
+  }, [mx, my])
+
+  // Show enter prompt after scramble finishes
+  const handleScrambleDone = () => setTimeout(() => setReady(true), 200)
+
+  // Enter key triggers navigation
+  useEffect(() => {
+    if (!ready) return
+    const onKey = (e) => { if (e.key === 'Enter') onEnter() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ready, onEnter])
+
+  const subX = useSpring(useTransform(mx, v => v * 0.006), { stiffness: 115, damping: 22, mass: 0.6 })
+  const subY = useSpring(useTransform(my, v => v * 0.005), { stiffness: 115, damping: 22, mass: 0.6 })
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#010408', overflow: 'hidden' }}>
+
+      <WaveBackground />
+
+      {/* Vignette */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
+        background: 'radial-gradient(ellipse 58% 52% at 50% 52%, rgba(1,4,8,0.84), transparent)',
+      }} />
+
+      {/* Corner accents */}
+      {CORNER_STYLES.map((s, i) => (
+        <motion.div
+          key={i}
+          style={{ position: 'absolute', width: '22px', height: '22px', ...s }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.04 + i * 0.04, duration: 0.55 }}
+        />
+      ))}
+
+      {/* Top center system tag */}
+      <SystemTag />
+
+      {/* Live cursor position — bottom right */}
+      <MouseReadout mx={mx} my={my} visible={ready} />
+
+      {/* Main content */}
+      <div style={{
+        position: 'relative', zIndex: 1, height: '100%',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        padding: '0 24px',
+      }}>
+
+        <WingSection mx={mx} my={my} />
+
+        <WarpTitle mx={mx} my={my} onDone={handleScrambleDone} />
+
+        {/* Mid-depth parallax layer */}
+        <motion.div
+          style={{
+            x: subX, y: subY,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: '16px',
+          }}
+        >
+          {/* Byline */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.55, delay: 0.9 }}
+            style={{
               fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.65rem', letterSpacing: '0.14em',
-              color: 'rgba(0,200,255,0.8)',
-              textTransform: 'uppercase',
-            }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00c8ff', boxShadow: '0 0 8px #00c8ff', animation: 'statusPulse 2s ease-in-out infinite' }} />
-              AI Aerodynamic Design System
-            </div>
-          </div>
-
-          {/* Wing SVG */}
-          <div style={{ width: '100%', maxWidth: '820px', marginBottom: '8px' }}>
-            <svg viewBox="0 0 820 210" style={{ width: '100%', overflow: 'visible' }}>
-              <defs>
-                <linearGradient id="wfill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"   stopColor="#00c8ff" stopOpacity="0.12" />
-                  <stop offset="100%" stopColor="#00e5cc" stopOpacity="0.03" />
-                </linearGradient>
-                <linearGradient id="wstroke" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%"   stopColor="#00c8ff" />
-                  <stop offset="60%"  stopColor="#00e5cc" />
-                  <stop offset="100%" stopColor="#00c8ff" stopOpacity="0.4" />
-                </linearGradient>
-                <linearGradient id="slGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%"   stopColor="#00c8ff" stopOpacity="0" />
-                  <stop offset="20%"  stopColor="#00c8ff" stopOpacity="1" />
-                  <stop offset="80%"  stopColor="#00e5cc" stopOpacity="1" />
-                  <stop offset="100%" stopColor="#00e5cc" stopOpacity="0" />
-                </linearGradient>
-                <filter id="wingGlowBig">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" />
-                </filter>
-                <filter id="leDotGlow">
-                  <feGaussianBlur stdDeviation="4" result="b" />
-                  <feComposite in="SourceGraphic" in2="b" />
-                </filter>
-              </defs>
-
-              {/* Streamlines */}
-              {STREAMLINES.map(([y, c1y, c2y, op], i) => {
-                const isAbove = y < 105
-                const mid = isAbove ? c2y : c2y
-                return (
-                  <path
-                    key={i}
-                    className={`streamline sl-${i}`}
-                    d={`M -30 ${y} C 200 ${c1y}, 400 ${mid}, 620 ${y + (isAbove ? 2 : -1)} S 900 ${y}, 880 ${y}`}
-                    fill="none"
-                    stroke="url(#slGrad)"
-                    strokeWidth="1"
-                    opacity={op}
-                  />
-                )
-              })}
-
-              {/* Wing fill */}
-              <path
-                className="wing-fill"
-                d="M 40 105 C 160 50, 420 38, 780 100 L 780 108 C 420 68, 160 125, 40 105 Z"
-                fill="url(#wfill)"
-              />
-
-              {/* Wing glow (blurred duplicate) */}
-              <path
-                className="wing-upper"
-                d="M 40 105 C 160 50, 420 38, 780 100"
-                fill="none"
-                stroke="#00c8ff"
-                strokeWidth="8"
-                strokeLinecap="round"
-                opacity="0.15"
-                filter="url(#wingGlowBig)"
-              />
-
-              {/* Upper surface */}
-              <path
-                className="wing-upper"
-                d="M 40 105 C 160 50, 420 38, 780 100"
-                fill="none"
-                stroke="url(#wstroke)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-
-              {/* Lower surface */}
-              <path
-                className="wing-lower"
-                d="M 40 105 C 160 125, 420 112, 780 108"
-                fill="none"
-                stroke="url(#wstroke)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                opacity="0.7"
-              />
-
-              {/* Camber line */}
-              <path
-                className="wing-camber"
-                d="M 40 105 C 160 88, 420 76, 780 104"
-                fill="none"
-                stroke="#ffb020"
-                strokeWidth="1"
-                strokeDasharray="6 5"
-                opacity="0.45"
-              />
-
-              {/* Leading edge glow dot */}
-              <circle className="le-dot" cx="40" cy="105" r="4" fill="#00c8ff" filter="url(#leDotGlow)" />
-
-              {/* LE / TE labels */}
-              <text x="24" y="105" textAnchor="end" fill="#00c8ff" fontSize="9" fontFamily="JetBrains Mono" dominantBaseline="middle" opacity="0.5">LE</text>
-              <text x="796" y="104" textAnchor="start" fill="#00c8ff" fontSize="9" fontFamily="JetBrains Mono" dominantBaseline="middle" opacity="0.5">TE</text>
-
-              {/* Chord fraction markers */}
-              {[0.25, 0.5, 0.75].map(f => {
-                const x = 40 + f * 740
-                return (
-                  <g key={f}>
-                    <line x1={x} y1="150" x2={x} y2="165" stroke="rgba(0,200,255,0.15)" strokeWidth="1" />
-                    <text x={x} y="175" textAnchor="middle" fill="rgba(0,200,255,0.25)" fontSize="8" fontFamily="JetBrains Mono">{f}c</text>
-                  </g>
-                )
-              })}
-
-              {/* Stat annotations floating above wing */}
-              {showStats && [
-                { x: 180, y: 30,  label: 'Low pressure zone', anchor: 'middle' },
-                { x: 460, y: 22,  label: 'Peak suction',      anchor: 'middle' },
-                { x: 680, y: 38,  label: 'Pressure recovery', anchor: 'middle' },
-              ].map(({ x, y, label, anchor }, i) => (
-                <g key={label} className="fade-up" style={{ animationDelay: `${i * 0.15}s` }}>
-                  <line x1={x} y1={y + 8} x2={x} y2="52" stroke="rgba(0,200,255,0.2)" strokeWidth="1" strokeDasharray="3 3" />
-                  <text x={x} y={y} textAnchor={anchor} fill="rgba(0,200,255,0.4)" fontSize="8.5" fontFamily="JetBrains Mono">{label}</text>
-                </g>
-              ))}
-            </svg>
-          </div>
-
-          {/* ── Title ── */}
-          <div style={{ marginBottom: '12px', lineHeight: 1 }}>
-            {showTitle && (
-              <h1 style={{ margin: 0, padding: 0, display: 'flex', gap: '2px', justifyContent: 'center' }}>
-                {LETTERS.map((l, i) => (
-                  <span
-                    key={i}
-                    className="intro-letter"
-                    style={{
-                      fontFamily: 'Syne, sans-serif',
-                      fontSize: 'clamp(3.5rem, 10vw, 7rem)',
-                      fontWeight: 800,
-                      letterSpacing: '0.04em',
-                      animationDelay: `${i * 0.07}s`,
-                      background: i < 4
-                        ? 'linear-gradient(135deg, #00c8ff 0%, #00e5cc 100%)'
-                        : 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(200,210,230,0.85) 100%)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text',
-                      filter: i < 4 ? 'drop-shadow(0 0 20px rgba(0,200,255,0.4))' : 'none',
-                    }}
-                  >
-                    {l}
-                  </span>
-                ))}
-              </h1>
-            )}
-          </div>
-
-          {/* Tagline */}
-          {showTitle && (
-            <p className="fade-up" style={{
-              animationDelay: '0.6s',
-              fontFamily: 'Outfit, sans-serif',
-              fontSize: 'clamp(0.85rem, 2vw, 1.05rem)',
-              fontWeight: 400,
-              color: 'rgba(170,185,210,0.7)',
-              letterSpacing: '0.18em',
+              fontSize: '0.56rem',
+              letterSpacing: '0.22em',
+              color: 'rgba(255,255,255,0.18)',
               textTransform: 'uppercase',
               textAlign: 'center',
-              marginBottom: '28px',
-            }}>
-              AI Aerodynamic Design Optimization
-            </p>
-          )}
+              margin: 0,
+            }}
+          >
+            Designed by — Zenith Mesa
+          </motion.p>
 
-          {/* Stats row */}
-          {showStats && (
-            <div style={{ display: 'flex', gap: '40px', marginBottom: '36px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {STATS.map(({ value, label }, i) => (
-                <div
-                  key={label}
-                  className="stat-item"
-                  style={{ animationDelay: `${i * 0.12}s`, textAlign: 'center' }}
+          {/* Decorative scan divider */}
+          <ScanDivider visible={ready} />
+
+          {/* Press Enter prompt */}
+          <AnimatePresence>
+            {ready && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.45em',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: '0.58rem',
+                  letterSpacing: '0.22em',
+                  color: 'rgba(255,255,255,0.32)',
+                  textTransform: 'uppercase',
+                  userSelect: 'none',
+                  marginTop: '8px',
+                }}
+              >
+                <span>press enter to start</span>
+                <motion.span
+                  animate={{ opacity: [1, 1, 0, 0] }}
+                  transition={{ duration: 1.1, repeat: Infinity, times: [0, 0.45, 0.5, 0.95] }}
+                  style={{ color: 'rgba(255,255,255,0.50)' }}
                 >
-                  <div style={{
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: 'clamp(1.2rem, 3vw, 1.6rem)',
-                    fontWeight: 600,
-                    background: 'linear-gradient(135deg, #00c8ff, #00e5cc)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
-                    filter: 'drop-shadow(0 0 12px rgba(0,200,255,0.3))',
-                  }}>
-                    {value}
-                  </div>
-                  <div style={{
-                    fontFamily: 'JetBrains Mono, monospace',
-                    fontSize: '0.62rem',
-                    letterSpacing: '0.12em',
-                    textTransform: 'uppercase',
-                    color: 'rgba(99,104,128,0.9)',
-                    marginTop: '4px',
-                  }}>
-                    {label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Divider */}
-          {showBy && (
-            <div className="fade-up" style={{ animationDelay: '0s', display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', width: '100%', maxWidth: '360px' }}>
-              <div style={{ flex: 1, height: '1px', background: 'linear-gradient(to right, transparent, rgba(0,200,255,0.25))' }} />
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.6rem', color: 'rgba(99,104,128,0.6)', letterSpacing: '0.14em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                Designed &amp; Built by
-              </span>
-              <div style={{ flex: 1, height: '1px', background: 'linear-gradient(to left, transparent, rgba(0,200,255,0.25))' }} />
-            </div>
-          )}
-
-          {/* Author */}
-          {showBy && (
-            <div className="fade-up" style={{ animationDelay: '0.15s', marginBottom: '44px', textAlign: 'center' }}>
-              <p style={{
-                fontFamily: 'Syne, sans-serif',
-                fontSize: 'clamp(1.3rem, 3.5vw, 1.75rem)',
-                fontWeight: 700,
-                color: '#ffffff',
-                letterSpacing: '0.06em',
-                margin: 0,
-              }}>
-                Zenith Mesa
-              </p>
-            </div>
-          )}
-
-          {/* CTA */}
-          {showCta && (
-            <div className="fade-up" style={{ animationDelay: '0s' }}>
-              <button className="intro-cta" onClick={handleEnter}>
-                Enter Studio&nbsp;&nbsp;→
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Bottom scrolling ticker */}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0,
-          borderTop: '1px solid rgba(0,200,255,0.07)',
-          padding: '8px 0',
-          overflow: 'hidden',
-          background: 'rgba(0,200,255,0.02)',
-        }}>
-          <div style={{
-            display: 'flex', gap: '60px',
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '0.6rem',
-            color: 'rgba(0,200,255,0.25)',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-            animation: 'tickerScroll 20s linear infinite',
-            width: 'max-content',
-          }}>
-            {[...Array(4)].flatMap(() => [
-              'NACA 4412 Inverted',
-              '✦',
-              'Glauert Thin-Airfoil Theory',
-              '✦',
-              'Thwaites Boundary-Layer Method',
-              '✦',
-              'Latin Hypercube Sampling',
-              '✦',
-              'XGBoost · Gaussian Process · MLP',
-              '✦',
-              'NSGA-II Multi-Objective',
-              '✦',
-              'Flask REST API · React 18 · Vite',
-              '✦',
-            ]).map((t, i) => (
-              <span key={i}>{t}</span>
-            ))}
-          </div>
-        </div>
+                  _
+                </motion.span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </div>
-    </>
+    </div>
   )
 }
