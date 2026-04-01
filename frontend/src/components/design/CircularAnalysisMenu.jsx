@@ -100,7 +100,7 @@ function AnalysisItem({ item, index, analysisType, onSelect, loading, isOffline 
   const [hovered, setHovered] = useState(false)
   const pos        = getPos(item.angle)
   const isSelected = analysisType === item.id
-  const disabled   = loading || (isOffline && item.id !== 'ml')
+  const disabled   = loading
   const Icon       = item.icon
 
   return (

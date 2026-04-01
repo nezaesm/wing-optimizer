@@ -76,6 +76,7 @@ app = Flask(__name__)
 # Set ALLOWED_ORIGINS env var (comma-separated) to override defaults.
 _ALLOWED_ORIGINS: set = set(filter(None, os.environ.get(
     "ALLOWED_ORIGINS",
+    "https://wing-optimizer.vercel.app,"
     "https://wing-optimizer-idzil0zw2-zenithprakash67-3615s-projects.vercel.app,"
     "https://frontend-five-beige-e9u7r18z93.vercel.app,"
     "http://localhost:5173,"
@@ -89,7 +90,11 @@ _ALLOWED_ORIGINS: set = set(filter(None, os.environ.get(
 @app.after_request
 def _cors(response):
     origin = request.headers.get("Origin", "")
-    if origin in _ALLOWED_ORIGINS:
+    # Allow explicitly listed origins OR any Vercel deployment (*.vercel.app)
+    allowed = origin in _ALLOWED_ORIGINS or (
+        origin.startswith("https://") and origin.endswith(".vercel.app")
+    )
+    if allowed:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
