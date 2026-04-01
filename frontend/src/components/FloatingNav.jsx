@@ -1,7 +1,7 @@
-// FloatingNav.jsx — WINGOPT at left corner + centered floating pill
+// FloatingNav.jsx — WINGOPT logo + centered floating pill with liquid glass
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useSpring } from 'framer-motion'
 import { Sliders, FlaskConical, Target, ShieldCheck, BarChart3, Activity, Upload, Info, Wind } from 'lucide-react'
 
 const NAV = [
@@ -15,10 +15,10 @@ const NAV = [
   { path: '/about',       label: 'About',        icon: Info         },
 ]
 
-const SILVER     = '#d4d4d4'
-const ICON_W     = 40
-const LIMELIGHT  = 44
-const SCRAMBLE   = '_!X$0-+*#'
+const SILVER    = '#d4d4d4'
+const ICON_W    = 40
+const LIMELIGHT = 44
+const SCRAMBLE  = '_!X$0-+*#'
 
 function rChar(p) {
   let c
@@ -27,7 +27,6 @@ function rChar(p) {
 }
 
 // ── Scramble-reveal label ─────────────────────────────────────────────────────
-// Runs a two-phase scramble when active → true. Isolated renders.
 function ScrambleNavLabel({ text, active }) {
   const [display, setDisplay] = useState('')
   const ivRef    = useRef(null)
@@ -85,14 +84,58 @@ function WingGem() {
   )
 }
 
+// ── Cursor-refraction overlay (isolated — high-freq updates don't re-render parent) ──
+function NavRefraction({ navRef }) {
+  const [pos, setPos] = useState({ x: -1, y: -1 })
+  const rafRef = useRef(null)
+
+  useEffect(() => {
+    const el = navRef.current
+    if (!el) return
+
+    const onMove = (e) => {
+      if (rafRef.current) return
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
+        const rect = el.getBoundingClientRect()
+        setPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+      })
+    }
+    const onLeave = () => { setPos({ x: -1, y: -1 }) }
+
+    el.addEventListener('mousemove', onMove, { passive: true })
+    el.addEventListener('mouseleave', onLeave)
+    return () => {
+      el.removeEventListener('mousemove', onMove)
+      el.removeEventListener('mouseleave', onLeave)
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [navRef])
+
+  if (pos.x < 0) return null
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, borderRadius: '100px',
+      background: `radial-gradient(circle 78px at ${pos.x}px ${pos.y}px, rgba(255,255,255,0.08), transparent 70%)`,
+      pointerEvents: 'none', zIndex: 3,
+    }} />
+  )
+}
+
 export default function FloatingNav({ apiStatus }) {
   const [hidden, setHidden]             = useState(false)
   const [lastY, setLastY]               = useState(0)
   const [hoveredIndex, setHoveredIndex] = useState(null)
   const [limelightReady, setLimelightReady] = useState(false)
-  const location    = useLocation()
-  const iconRefs    = useRef([])
+  const location     = useLocation()
+  const iconRefs     = useRef([])
   const limelightRef = useRef(null)
+  const navPillRef   = useRef(null)
+
+  // Spring-animated glass hover tile
+  const tileLeftMV  = useMotionValue(0)
+  const tileLeftSpring = useSpring(tileLeftMV, { stiffness: 370, damping: 28, mass: 0.65 })
+  const firstHoverRef = useRef(true)
 
   const activeIndex = NAV.findIndex(({ path }) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
@@ -118,6 +161,24 @@ export default function FloatingNav({ apiStatus }) {
     limelight.style.left = `${newLeft}px`
     if (!limelightReady) setTimeout(() => setLimelightReady(true), 50)
   }, [activeIndex, limelightReady])
+
+  // Glass tile spring position
+  useLayoutEffect(() => {
+    if (hoveredIndex === null) {
+      firstHoverRef.current = true
+      return
+    }
+    const el = iconRefs.current[hoveredIndex]
+    if (!el) return
+    const newLeft = el.offsetLeft - 4
+    if (firstHoverRef.current) {
+      // Snap to position on first hover (no spring slide-in from 0)
+      tileLeftMV.jump(newLeft)
+      firstHoverRef.current = false
+    } else {
+      tileLeftMV.set(newLeft)
+    }
+  }, [hoveredIndex, tileLeftMV])
 
   const yTranslate = hidden ? '-80px' : '0'
 
@@ -155,6 +216,7 @@ export default function FloatingNav({ apiStatus }) {
 
       {/* ── Floating nav pill — centered ─────────────────────────────────── */}
       <nav
+        ref={navPillRef}
         aria-label="Main navigation"
         style={{
           position:   'fixed',
@@ -165,20 +227,73 @@ export default function FloatingNav({ apiStatus }) {
           display:    'flex',
           alignItems: 'center',
           gap:        '2px',
-          background: 'rgba(1, 4, 8, 0.90)',
-          border:     '1px solid rgba(190,190,190,0.12)',
+          // ── Liquid glass background ────────────────────────────────────
+          background:   'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 50%, rgba(255,255,255,0.06) 100%)',
+          backdropFilter:       'blur(32px) saturate(1.7)',
+          WebkitBackdropFilter: 'blur(32px) saturate(1.7)',
+          border:     '1px solid rgba(255,255,255,0.11)',
           borderRadius:     '100px',
           padding:          '5px 5px',
-          backdropFilter:   'blur(28px)',
-          WebkitBackdropFilter: 'blur(28px)',
-          boxShadow: '0 0 0 1px rgba(200,200,200,0.03), 0 4px 32px rgba(0,0,0,0.72), 0 0 50px rgba(180,180,180,0.04)',
+          boxShadow: [
+            '0 0 0 1px rgba(255,255,255,0.04) inset',
+            '0 8px 36px rgba(0,0,0,0.62)',
+            'inset 0 1px 0 rgba(255,255,255,0.13)',
+            'inset 0 -1px 0 rgba(0,0,0,0.08)',
+          ].join(', '),
           transition: 'transform 0.42s cubic-bezier(0.23,1,0.32,1)',
           whiteSpace: 'nowrap',
           maxWidth:   'calc(100vw - 200px)',
+          overflow:   'visible',
         }}
       >
-        {/* Nav items container — relative for limelight */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        {/* Specular edge highlight */}
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: '100px',
+          background: 'linear-gradient(to bottom, rgba(255,255,255,0.08) 0%, transparent 50%)',
+          pointerEvents: 'none', zIndex: 0,
+        }} />
+
+        {/* Cursor refraction overlay (isolated component) */}
+        <NavRefraction navRef={navPillRef} />
+
+        {/* Nav items container — relative for limelight + glass tile */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', zIndex: 2 }}>
+
+          {/* ── Liquid glass hover tile ─────────────────────────────────── */}
+          <AnimatePresence>
+            {hoveredIndex !== null && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.88 }}
+                transition={{ duration: 0.14, ease: 'easeOut' }}
+                style={{
+                  position:    'absolute',
+                  top:         0,
+                  left:        tileLeftSpring,
+                  width:       `${ICON_W + 8}px`,
+                  height:      '100%',
+                  borderRadius: '100px',
+                  pointerEvents: 'none',
+                  zIndex:      1,
+                  // Liquid glass tile
+                  background:   'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 55%, rgba(255,255,255,0.08) 100%)',
+                  backdropFilter: 'blur(10px) saturate(1.5)',
+                  WebkitBackdropFilter: 'blur(10px) saturate(1.5)',
+                  border:       '1px solid rgba(255,255,255,0.16)',
+                  boxShadow:    'inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.30)',
+                }}
+              >
+                {/* Top specular sheen */}
+                <div style={{
+                  position: 'absolute', left: 0, right: 0, top: 0, height: '55%',
+                  borderRadius: '100px 100px 0 0',
+                  background: 'linear-gradient(to bottom, rgba(255,255,255,0.15), transparent)',
+                  pointerEvents: 'none',
+                }} />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Limelight bar */}
           <div
@@ -197,7 +312,6 @@ export default function FloatingNav({ apiStatus }) {
               zIndex:     10,
             }}
           >
-            {/* Cone glow */}
             <div style={{
               position:   'absolute',
               left:       '-28%',
@@ -232,6 +346,8 @@ export default function FloatingNav({ apiStatus }) {
                   cursor:         'none',
                   padding:        '7px 0',
                   flexShrink:     0,
+                  position:       'relative',
+                  zIndex:         2,
                 }}
               >
                 {/* Icon zone — limelight anchor */}
@@ -250,10 +366,11 @@ export default function FloatingNav({ apiStatus }) {
                     size={14}
                     style={{
                       color: isActive  ? '#ffffff'
-                           : isHovered ? 'rgba(220,220,220,0.65)'
+                           : isHovered ? 'rgba(240,240,240,0.88)'
                            :             'rgba(140,140,140,0.38)',
                       transition: 'color 0.18s ease',
                       flexShrink: 0,
+                      filter: isHovered ? 'drop-shadow(0 0 4px rgba(255,255,255,0.30))' : 'none',
                     }}
                   />
                 </div>
@@ -274,7 +391,7 @@ export default function FloatingNav({ apiStatus }) {
                     fontSize:      '10px',
                     letterSpacing: '0.10em',
                     fontWeight:    isActive ? 600 : 400,
-                    color:         isActive ? '#ffffff' : 'rgba(200,200,200,0.65)',
+                    color:         isActive ? '#ffffff' : 'rgba(220,220,220,0.72)',
                     textTransform: 'uppercase',
                     lineHeight:    1,
                   }}
@@ -290,9 +407,10 @@ export default function FloatingNav({ apiStatus }) {
         <div style={{
           width:      '1px',
           height:     '16px',
-          background: 'rgba(180,180,180,0.10)',
+          background: 'rgba(255,255,255,0.08)',
           marginLeft: '2px',
           flexShrink: 0,
+          zIndex:     2,
         }} />
 
         {/* API status pill */}
@@ -305,15 +423,16 @@ export default function FloatingNav({ apiStatus }) {
             padding:    '7px 12px',
             borderRadius: '100px',
             background: apiStatus === 'ready'
-              ? 'rgba(200,200,200,0.06)'
+              ? 'rgba(255,255,255,0.05)'
               : apiStatus === 'offline'
               ? 'rgba(255,61,90,0.07)'
-              : 'rgba(180,180,180,0.04)',
+              : 'rgba(255,255,255,0.03)',
             border: `1px solid ${
-              apiStatus === 'ready'   ? 'rgba(200,200,200,0.16)'
+              apiStatus === 'ready'   ? 'rgba(255,255,255,0.12)'
               : apiStatus === 'offline' ? 'rgba(255,61,90,0.22)'
-              : 'rgba(160,160,160,0.10)'
+              : 'rgba(255,255,255,0.06)'
             }`,
+            boxShadow: apiStatus === 'ready' ? 'inset 0 1px 0 rgba(255,255,255,0.10)' : 'none',
             fontFamily: '"JetBrains Mono", monospace',
             fontSize:   '11px',
             fontWeight: 500,
@@ -322,6 +441,8 @@ export default function FloatingNav({ apiStatus }) {
                  : 'rgba(160,160,160,0.45)',
             cursor:    'none',
             flexShrink: 0,
+            position:   'relative',
+            zIndex:     2,
           }}
         >
           <span

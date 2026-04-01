@@ -6,7 +6,7 @@ import { api } from '../api/client'
 import SciFiScene from '../components/design/SciFiScene'
 import AnalysisOverlay from '../components/design/AnalysisOverlay'
 import ResultsPanel from '../components/design/ResultsPanel'
-import AnalysisControl from '../components/design/AnalysisControl'
+import CircularAnalysisMenu from '../components/design/CircularAnalysisMenu'
 import { SF } from '../components/design/tokens'
 
 // ── Design parameters ─────────────────────────────────────────────────────────
@@ -369,8 +369,8 @@ export default function DesignPage() {
         onClose={() => setSceneMode('idle')}
       />
 
-      {/* Analysis control (FAB + panel) */}
-      <AnalysisControl
+      {/* Circular analysis command menu */}
+      <CircularAnalysisMenu
         onRun={handleRunAnalysis}
         loading={loading}
         analysisType={analysisType}
