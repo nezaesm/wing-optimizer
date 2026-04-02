@@ -13,7 +13,32 @@ const SEP  = 0.85   // world-unit spacing
 // ── Vertex shader ──────────────────────────────────────────────────────────────
 const vertexShader = /* glsl */`
 uniform float uTime;
+uniform float uMode;
 varying float vAlpha;
+
+// Per-mode displacement intensity — interpolates between section flavors
+float modeScale(float m) {
+  if (m < 1.0) return mix(1.00, 1.10, m);
+  if (m < 2.0) return mix(1.10, 1.60, m - 1.0);
+  if (m < 3.0) return mix(1.60, 0.90, m - 2.0);
+  if (m < 4.0) return mix(0.90, 1.30, m - 3.0);
+  if (m < 5.0) return mix(1.30, 1.20, m - 4.0);
+  if (m < 6.0) return mix(1.20, 0.80, m - 5.0);
+  if (m < 7.0) return mix(0.80, 0.00, m - 6.0);
+  return 0.0;
+}
+
+// Per-mode frequency modifier — changes wave character per section
+float modeFreq(float m) {
+  if (m < 1.0) return mix(1.00, 1.20, m);
+  if (m < 2.0) return mix(1.20, 2.10, m - 1.0);
+  if (m < 3.0) return mix(2.10, 0.80, m - 2.0);
+  if (m < 4.0) return mix(0.80, 1.90, m - 3.0);
+  if (m < 5.0) return mix(1.90, 1.50, m - 4.0);
+  if (m < 6.0) return mix(1.50, 0.70, m - 5.0);
+  if (m < 7.0) return mix(0.70, 0.40, m - 6.0);
+  return 0.40;
+}
 
 // Hash without sin — avoids precision artifacts on some drivers
 vec2 hash2(vec2 p) {
@@ -48,13 +73,16 @@ void main() {
   vec3 pos = position;
 
   // ── Terrain displacement ────────────────────────────────────────────────────
+  float scale = modeScale(uMode);
+  float freq  = modeFreq(uMode);
+
   // Primary organic hills via fBm (slow drift over time)
-  float n = fbm(pos.xz * 0.13 + uTime * 0.016);
-  pos.y += n * 3.4;
+  float n = fbm(pos.xz * 0.13 * freq + uTime * 0.016);
+  pos.y += n * 3.4 * scale;
 
   // Secondary gentle rolling swell (different frequencies for richness)
-  pos.y += sin(pos.x * 0.22 + uTime * 0.10) * 0.40;
-  pos.y += cos(pos.z * 0.18 + uTime * 0.07) * 0.32;
+  pos.y += sin(pos.x * 0.22 * freq + uTime * 0.10) * 0.40 * scale;
+  pos.y += cos(pos.z * 0.18 * freq + uTime * 0.07) * 0.32 * scale;
 
   // ── Depth calculations ──────────────────────────────────────────────────────
   vec4 mvPos  = modelViewMatrix * vec4(pos, 1.0);
@@ -98,7 +126,7 @@ void main() {
 `
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function WaveDots() {
+export default function WaveDots({ scrollProxy }) {
   const pointsRef = useRef()
 
   // Respect prefers-reduced-motion — stop animation but keep terrain visible
@@ -131,18 +159,25 @@ export default function WaveDots() {
   const material = useMemo(() => new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader,
-    uniforms: { uTime: { value: 0 } },
+    uniforms: {
+      uTime: { value: 0 },
+      uMode: { value: 0 },
+    },
     transparent: true,
     depthWrite: false,
   }), [])
 
   useEffect(() => () => { geometry.dispose(); material.dispose() }, [geometry, material])
 
-  // Only update the time uniform — no geometry mutations
+  // Update time + mode uniforms — no geometry mutations
   useFrame((_, delta) => {
     if (reducedMotion.current) return
     if (pointsRef.current) {
-      pointsRef.current.material.uniforms.uTime.value += delta
+      const u = pointsRef.current.material.uniforms
+      u.uTime.value += delta
+      if (scrollProxy?.current) {
+        u.uMode.value = scrollProxy.current.waveMode ?? 0
+      }
     }
   })
 

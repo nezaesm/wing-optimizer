@@ -1,33 +1,22 @@
-// src/pages/Design.jsx — Cinematic sci-fi aerodynamic design studio
+// src/pages/Design.jsx — §0 HTML overlay for the Design studio
+// SciFiScene is now in App.jsx (persistent across all sections)
+// This component renders only the 2D UI layer on top of the R3F canvas
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../api/client'
-import SciFiScene from '../components/design/SciFiScene'
 import AnalysisOverlay from '../components/design/AnalysisOverlay'
 import ResultsPanel from '../components/design/ResultsPanel'
 import CircularAnalysisMenu from '../components/design/CircularAnalysisMenu'
 import { SF } from '../components/design/tokens'
 
-// ── Design parameters ─────────────────────────────────────────────────────────
-const BASELINE = {
-  camber_pct: 4, camber_pos_pct: 40, thickness_pct: 12,
-  aoa_deg: -5, flap_angle_deg: 10, flap_chord_pct: 25,
-  aspect_ratio: 3.5, endplate_h_pct: 15,
-}
-const BASELINE_3D = {
-  taper_ratio: 1.0, sweep_deg: 0.0, twist_deg: 0.0,
-  ride_height_pct: 8.0, flap_gap_pct: 1.5,
-}
-
-// ── Top-left corner data display ──────────────────────────────────────────────
+// ── Corner data displays ──────────────────────────────────────────────────────
 function CornerData({ params, metrics }) {
   const items = [
     { k: 'AoA',    v: `${params.aoa_deg}°` },
     { k: 'Camber', v: `${params.camber_pct.toFixed(1)}%` },
     { k: 'AR',     v: params.aspect_ratio.toFixed(1) },
     ...(metrics ? [
-      { k: 'Cl',  v: metrics.Cl?.toFixed(3) ?? '—' },
+      { k: 'Cl',  v: metrics.Cl?.toFixed(3)         ?? '—' },
       { k: 'Eff', v: metrics.efficiency?.toFixed(2) ?? '—' },
     ] : []),
   ]
@@ -36,10 +25,7 @@ function CornerData({ params, metrics }) {
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 1.2 }}
-      style={{
-        position: 'fixed', top: `${SF.navH + 16}px`, left: '24px',
-        zIndex: 20, pointerEvents: 'none',
-      }}
+      style={{ position: 'fixed', top: `${SF.navH + 16}px`, left: '24px', zIndex: 20, pointerEvents: 'none' }}
     >
       {items.map(({ k, v }) => (
         <div key={k} style={{ display: 'flex', gap: '8px', lineHeight: '1.9' }}>
@@ -51,7 +37,6 @@ function CornerData({ params, metrics }) {
   )
 }
 
-// ── Top-right corner data display ─────────────────────────────────────────────
 function CornerDataRight({ metrics }) {
   if (!metrics) return null
   const items = [
@@ -63,10 +48,7 @@ function CornerDataRight({ metrics }) {
     <motion.div
       initial={{ opacity: 0, x: 12 }}
       animate={{ opacity: 1, x: 0 }}
-      style={{
-        position: 'fixed', top: `${SF.navH + 16}px`, right: '88px',
-        zIndex: 20, pointerEvents: 'none', textAlign: 'right',
-      }}
+      style={{ position: 'fixed', top: `${SF.navH + 16}px`, right: '88px', zIndex: 20, pointerEvents: 'none', textAlign: 'right' }}
     >
       {items.map(({ k, v }) => (
         <div key={k} style={{ display: 'flex', gap: '8px', lineHeight: '1.9', justifyContent: 'flex-end' }}>
@@ -78,7 +60,6 @@ function CornerDataRight({ metrics }) {
   )
 }
 
-// ── Page title / breadcrumb ───────────────────────────────────────────────────
 function PageTitle() {
   return (
     <motion.div
@@ -103,7 +84,6 @@ function PageTitle() {
   )
 }
 
-// ── Hotspot hint (shown on first load) ───────────────────────────────────────
 function HotspotHint({ show }) {
   return (
     <AnimatePresence>
@@ -114,13 +94,11 @@ function HotspotHint({ show }) {
           exit={{ opacity: 0 }}
           transition={{ delay: 2.5, duration: 0.5 }}
           style={{
-            position: 'fixed',
-            bottom: '100px', left: '50%',
+            position: 'fixed', bottom: '100px', left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 20, pointerEvents: 'none',
             fontFamily: SF.fontMono, fontSize: '9px',
-            color: SF.textMuted,
-            letterSpacing: '0.1em',
+            color: SF.textMuted, letterSpacing: '0.1em',
             display: 'flex', alignItems: 'center', gap: '8px',
           }}
         >
@@ -133,7 +111,6 @@ function HotspotHint({ show }) {
   )
 }
 
-// ── Error toast ───────────────────────────────────────────────────────────────
 function ErrorToast({ error, onDismiss }) {
   return (
     <AnimatePresence>
@@ -145,16 +122,13 @@ function ErrorToast({ error, onDismiss }) {
           style={{
             position: 'fixed', bottom: '100px', left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 50,
-            padding: '9px 16px',
+            zIndex: 50, padding: '9px 16px',
             background: 'rgba(255,61,90,0.10)',
             border: '1px solid rgba(255,61,90,0.32)',
-            borderRadius: '6px',
-            backdropFilter: 'blur(20px)',
+            borderRadius: '6px', backdropFilter: 'blur(20px)',
             fontFamily: SF.fontMono, fontSize: '10px', color: SF.red,
             display: 'flex', alignItems: 'center', gap: '8px',
-            cursor: 'none',
-            pointerEvents: 'auto',
+            cursor: 'none', pointerEvents: 'auto',
           }}
           onClick={onDismiss}
         >
@@ -165,7 +139,6 @@ function ErrorToast({ error, onDismiss }) {
   )
 }
 
-// ── Keyboard hints ────────────────────────────────────────────────────────────
 function KeyHints() {
   return (
     <motion.div
@@ -179,9 +152,10 @@ function KeyHints() {
       }}
     >
       {[
-        { key: 'DRAG', action: 'ROTATE' },
-        { key: 'SCROLL', action: 'ZOOM' },
-        { key: 'ESC', action: 'CLOSE PANEL' },
+        { key: 'DRAG',              action: 'ROTATE' },
+        { key: 'PINCH/HOLD+SCROLL', action: 'ZOOM'   },
+        { key: 'ESC',               action: 'CLOSE PANEL' },
+        { key: 'SCROLL',            action: 'NEXT SECTION' },
       ].map(({ key, action }) => (
         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span style={{
@@ -200,70 +174,26 @@ function KeyHints() {
   )
 }
 
-// ── Main Design Page ──────────────────────────────────────────────────────────
-export default function DesignPage() {
-  const [params, setParams]         = useState(BASELINE)
-  const [params3d, setParams3d]     = useState(BASELINE_3D)
-  const [geoData, setGeoData]       = useState(null)
-  const [baseline, setBaseline]     = useState(null)
-
-  const [activeHotspot, setActiveHotspot] = useState(null)
-  const [analysisType, setAnalysisType]   = useState('physics')
-  const [sceneMode, setSceneMode]         = useState('idle')   // 'idle' | 'analyzing' | 'results'
-  const [results, setResults]             = useState(null)
-  const [loading, setLoading]             = useState(false)
-  const [error, setError]                 = useState('')
-  const [showHint, setShowHint]           = useState(true)
-  const [apiStatus, setApiStatus]         = useState('checking')
-
-  const geoTimer = useRef(null)
-
-  // ── Fetch geometry on mount and param change ─────────────────────────────
-  const fetchGeometry = useCallback(async (p) => {
-    try { setGeoData(await api.geometry(p)) } catch {}
-  }, [])
+// ── Main DesignPage — now a pure overlay, receives state from App ─────────────
+export default function DesignPage({
+  visible,
+  params,
+  params3d,
+  sceneMode,
+  setSceneMode,
+  apiStatus,
+}) {
+  const [analysisType, setAnalysisType] = useState('physics')
+  const [results,      setResults]      = useState(null)
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState('')
+  const [showHint,     setShowHint]     = useState(true)
+  const [baseline,     setBaseline]     = useState(null)
 
   useEffect(() => {
-    // API health check
-    api.health()
-      .then(d => setApiStatus(d.models_loaded ? 'ready' : 'partial'))
-      .catch(() => setApiStatus('offline'))
-
     api.baseline().then(b => setBaseline(b.metrics)).catch(() => {})
-
-    // Check for imported params from Upload page
-    const loaded = sessionStorage.getItem('wopt_loaded_params')
-    if (loaded) {
-      try {
-        const p = JSON.parse(loaded)
-        const base = Object.fromEntries(Object.keys(BASELINE).map(k => [k, p[k] ?? BASELINE[k]]))
-        setParams(base)
-        fetchGeometry(base)
-        sessionStorage.removeItem('wopt_loaded_params')
-        return
-      } catch {}
-    }
-    fetchGeometry(BASELINE)
-  }, [fetchGeometry])
-
-  // Hide hint after first hotspot interaction
-  useEffect(() => {
-    if (activeHotspot) setShowHint(false)
-  }, [activeHotspot])
-
-  // ── Param change handlers ────────────────────────────────────────────────
-  const handleParam = useCallback((name, val) => {
-    const next = { ...params, [name]: val }
-    setParams(next)
-    clearTimeout(geoTimer.current)
-    geoTimer.current = setTimeout(() => fetchGeometry(next), 300)
-  }, [params, fetchGeometry])
-
-  const handleParam3d = useCallback((name, val) => {
-    setParams3d(p => ({ ...p, [name]: val }))
   }, [])
 
-  // ── Analysis dispatcher ──────────────────────────────────────────────────
   const handleRunAnalysis = useCallback(async (type) => {
     setLoading(true)
     setError('')
@@ -275,10 +205,7 @@ export default function DesignPage() {
       switch (type) {
         case 'physics': {
           res = await api.evaluate(params)
-          // Auto-check constraints
-          try {
-            await api.checkConstraints({ params, metrics: res.metrics || {} })
-          } catch {}
+          try { await api.checkConstraints({ params, metrics: res.metrics || {} }) } catch {}
           break
         }
         case 'ml': {
@@ -288,7 +215,6 @@ export default function DesignPage() {
         }
         case '3d': {
           const data = await api.analyze3d({ ...params, ...params3d })
-          // Also run L0 for base metrics if available
           let baseMetrics = null
           try { baseMetrics = (await api.evaluate(params)).metrics } catch {}
           res = { ...(baseMetrics ? { metrics: baseMetrics } : {}), ...data }
@@ -299,8 +225,7 @@ export default function DesignPage() {
           res = { sweep: data.sweep, metrics: null }
           break
         }
-        default:
-          break
+        default: break
       }
       setResults(res)
       setSceneMode('results')
@@ -310,78 +235,53 @@ export default function DesignPage() {
     } finally {
       setLoading(false)
     }
-  }, [params, params3d])
+  }, [params, params3d, setSceneMode])
 
-  // ── The full-screen experience rendered as portal ────────────────────────
-  const experience = (
+  return (
     <>
-      {/* Global styles for this experience */}
+      {/* Animation keyframes */}
       <style>{`
-        @keyframes sfPulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.5; transform: scale(1.3); }
-        }
-        @keyframes hotRing {
-          0%   { transform: scale(1); opacity: 0.7; }
-          100% { transform: scale(2.6); opacity: 0; }
-        }
-        @keyframes scanShimmer {
-          from { left: -40px; }
-          to   { left: calc(100% + 40px); }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
+        @keyframes sfPulse  { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.3); } }
+        @keyframes hotRing  { 0%      { transform:scale(1); opacity:0.7; } 100% { transform:scale(2.6); opacity:0; } }
+        @keyframes scanShimmer { from { left:-40px; } to { left:calc(100% + 40px); } }
+        @keyframes spin     { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
       `}</style>
 
-      {/* 3D scene */}
-      <SciFiScene
-        geoData={geoData}
-        params={params}
-        params3d={params3d}
-        activeHotspot={activeHotspot}
-        setActiveHotspot={setActiveHotspot}
-        onParamChange={handleParam}
-        onParam3dChange={handleParam3d}
-        isAnalyzing={sceneMode === 'analyzing'}
-      />
+      {/* Fade wrapper for §0 visibility */}
+      <div style={{
+        opacity:       visible ? 1 : 0,
+        pointerEvents: visible ? 'auto' : 'none',
+        transition:    'opacity 0.55s ease',
+      }}>
+        <PageTitle />
+        <CornerData params={params} metrics={results?.metrics} />
+        <CornerDataRight metrics={results?.metrics} />
+        <HotspotHint show={showHint && visible} />
+        <KeyHints />
 
-      {/* 2D Overlay elements */}
-      <PageTitle />
-      <CornerData params={params} metrics={results?.metrics} />
-      <CornerDataRight metrics={results?.metrics} />
-      <HotspotHint show={showHint} />
-      <KeyHints />
+        <AnalysisOverlay
+          visible={sceneMode === 'analyzing'}
+          analysisType={analysisType}
+        />
 
-      {/* Analysis loading overlay */}
-      <AnalysisOverlay
-        visible={sceneMode === 'analyzing'}
-        analysisType={analysisType}
-      />
+        <ResultsPanel
+          results={results}
+          analysisType={analysisType}
+          baseline={baseline}
+          visible={sceneMode === 'results'}
+          onClose={() => setSceneMode('idle')}
+        />
 
-      {/* Results panel */}
-      <ResultsPanel
-        results={results}
-        analysisType={analysisType}
-        baseline={baseline}
-        visible={sceneMode === 'results'}
-        onClose={() => setSceneMode('idle')}
-      />
+        <CircularAnalysisMenu
+          onRun={handleRunAnalysis}
+          loading={loading}
+          analysisType={analysisType}
+          setAnalysisType={setAnalysisType}
+          apiStatus={apiStatus}
+        />
 
-      {/* Circular analysis command menu */}
-      <CircularAnalysisMenu
-        onRun={handleRunAnalysis}
-        loading={loading}
-        analysisType={analysisType}
-        setAnalysisType={setAnalysisType}
-        apiStatus={apiStatus}
-      />
-
-      {/* Error toast */}
-      <ErrorToast error={error} onDismiss={() => setError('')} />
+        <ErrorToast error={error} onDismiss={() => setError('')} />
+      </div>
     </>
   )
-
-  return createPortal(experience, document.body)
 }
